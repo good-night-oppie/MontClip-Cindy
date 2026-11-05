@@ -116,7 +116,7 @@ var ASR_TEXT = {   // var: the tests read it from main.js's own scope
     only: '只下载这些文件，不会发出你的录像、字幕或项目。下载完会逐个核对，对不上就不装。',
     // cindy.confirm shows plain text only (no link, nothing to expand), so the licences are named here, one by one
     licence: { lead: '许可：', sep: '、', end: '。', sherpa: 'sherpa-onnx（Apache-2.0，内含 ONNX Runtime，MIT）', silero: 'silero VAD（MIT）', paraformer: 'Paraformer 中文模型（Apache-2.0）' },
-    yes: (mb) => '下载（约 ' + mb + ' MB）', no: '先不下',
+    yes: '下载', no: '先不下',   // JJ, option A: no size on the button, only in the first line
     button: '下载听写程序和模型…',
     installed: '听写程序和模型装好了，现在可以把说的话转成文字。',
     declined: (button) => '没有下载。以后要用，再点〔' + button + '〕就行。',
@@ -135,7 +135,7 @@ var ASR_TEXT = {   // var: the tests read it from main.js's own scope
     only: 'Your videos, captions and projects are never sent. Files are checked first.',
     licence: { lead: 'Licences: ', sep: ', ', end: ').', open: ' (', sherpa: 'sherpa-onnx, ONNX Runtime', silero: 'silero VAD', paraformer: 'Paraformer',
       of: { sherpa: ['Apache-2.0', 'MIT'], silero: ['MIT'], paraformer: ['Apache-2.0'] } },
-    yes: (mb) => 'Download (about ' + mb + ' MB)', no: 'Not now',
+    yes: 'Download', no: 'Not now',
     button: 'Download transcription program and model…',
     installed: 'The transcription program and model are installed. You can now turn speech into text.',
     declined: (button) => 'Nothing was downloaded. To use it later, click “' + button + '”.',
@@ -160,10 +160,10 @@ function asrConsent(spec, lang) {
     : t.licence.lead + parts.map((k) => t.licence[k]).join(t.licence.sep) + t.licence.end;
   return {
     body: [t.lead(engine && model ? t.what.both : model ? t.what.model : t.what.engine, mb), t.from(spec.fileHost), t.only, licence].join('\n'),
-    confirmText: t.yes(mb), cancelText: t.no,
+    confirmText: t.yes, cancelText: t.no,
   };
 }
-/** What the status card says after its button: installed, 〔先不下〕, a Cindy too old to ask, or a failure (no code). */
+/** What the status card says after its button: installed, declined (ASR_TEXT no), a Cindy too old to ask, or a failure (no code). */
 function asrResultText(r, lang) {
   const t = asrWords(lang);
   if (r.installed) return t.installed;
