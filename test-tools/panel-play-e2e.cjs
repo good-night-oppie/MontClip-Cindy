@@ -1,4 +1,4 @@
-// node plugins/montclip-cindy/test-tools/panel-play-e2e.cjs <repo root> <folder with the pinned ffmpeg.exe>   (after build.cjs; Chrome or Edge)
+// node test-tools/panel-play-e2e.cjs <repo root> <folder with the pinned ffmpeg.exe>   (after build.cjs; Chrome or Edge)
 // VV's open items on #114: (1) while the editor plays, the panel's highlight follows the playing line; (2) the panel
 // follows Cindy's light theme (?theme=light, then a theme message); (3) with the editor in a background tab, the
 // panel keeps its highlight. A generated 16 s test pattern with a tone and four
@@ -20,7 +20,7 @@ fs.writeFileSync(path.join(data, "project.json"), JSON.stringify({ name: "play e
   media: [{ id: "m1", name: "pattern.mp4", kind: "video", src: "/media/pattern.mp4", duration: 16, width: 640, height: 360 }],
   clips: [{ id: "v1", mediaId: "m1", kind: "video", track: "V1", start: 0, in: 0, duration: 16, props: { volume: 1 } },
     cap("a", 0, "第一句"), cap("b", 4, "第二句"), cap("c", 8, "第三句"), cap("d", 12, "第四句")] }));
-const w = spawn(process.execPath, [path.join(ROOT, "plugins/montclip-cindy/node/worker.cjs")], { env: { ...process.env, MONTCLIP_CINDY_APP: path.join(ROOT, "plugins/montclip-cindy/node/app"), MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0" }, stdio: ["pipe", "pipe", "ignore"] });
+const w = spawn(process.execPath, [path.join(ROOT, "dist/montclip/node/worker.cjs")], { env: { ...process.env, MONTCLIP_CINDY_APP: path.join(ROOT, "dist/montclip/node/app"), MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0" }, stdio: ["pipe", "pipe", "ignore"] });
 let id = 0; const pend = new Map(); let buf = "";
 w.stdout.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); pend.get(m.id)?.(m); } });
 const rpc = (method, params = {}) => new Promise((r) => { const n = ++id; pend.set(n, r); w.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: n, method, params }) + "\n"); });
@@ -36,7 +36,7 @@ async function cdp(wsUrl) {
   const out = { encoder: enc };
   const s = (await rpc("montclip/start")).result;
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), "mc-edge-")), port = 9000 + Math.floor(Math.random() * 500);
-  const b = spawn(require(path.join(ROOT, "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", s.url], { stdio: "ignore" });
+  const b = spawn(require(path.join(ROOT, "engine", "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", s.url], { stdio: "ignore" });
   await sleep(5000);
   const u = new URL(s.url); u.pathname = "/cindy/panel.html"; u.searchParams.delete("token"); u.searchParams.set("theme", "light");
   const tab = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(u.href)}`, { method: "PUT" })).json();

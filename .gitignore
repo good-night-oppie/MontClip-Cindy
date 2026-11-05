@@ -1,2 +1,6 @@
 node/app/
 *.cindy
+dist/
+*.bundle
+*.log
+node_modules/

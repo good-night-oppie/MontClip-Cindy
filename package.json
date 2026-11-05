@@ -1,0 +1,12 @@
+{
+  "name": "montclip-cindy",
+  "version": "0.5.1",
+  "private": true,
+  "description": "MontClip plugin for Cindy",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node build.cjs",
+    "test": "node build.cjs && node --test test/*.test.cjs"
+  }
+}

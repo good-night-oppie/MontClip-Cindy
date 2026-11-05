@@ -1,13 +1,13 @@
-// node plugins/montclip-cindy/test-tools/panel-e2e.cjs <repo root>   (after node plugins/montclip-cindy/build.cjs; needs Chrome or Edge)
+// node test-tools/panel-e2e.cjs <repo root>   (after node plugins/montclip-cindy/build.cjs; needs Chrome or Edge)
 // The side panel and the editor in one browser (two top-level tabs of the engine's origin, as the panel and the task
 // view are in Cindy's plugin partition): the panel lists the lines, a click on a line moves the editor, and the panel
 // marks the line being shown. Driven over CDP with Node's own WebSocket; temp data and profile, removed afterwards.
 const { spawn } = require("child_process"), fs = require("fs"), os = require("os"), path = require("path");
-const ROOT = process.argv[2], APP = path.join(ROOT, "plugins/montclip-cindy/node/app");
+const ROOT = process.argv[2], APP = path.join(ROOT, "dist/montclip/node/app");
 const data = fs.mkdtempSync(path.join(os.tmpdir(), "mc-panel-"));
 const t = (id, s, d, x) => ({ id, kind: "text", mediaId: null, track: "V2", start: s, in: 0, duration: d, props: { text: x, caption: true } });
 fs.writeFileSync(path.join(data, "project.json"), JSON.stringify({ name: "panel e2e", width: 1280, height: 720, fps: 30, revision: 1, media: [], clips: [t("a", 0, 3, "第一句"), t("b", 4, 3, "第二句"), t("c", 9, 2, "第三句")] }));
-const w = spawn(process.execPath, [path.join(ROOT, "plugins/montclip-cindy/node/worker.cjs")], { env: { ...process.env, MONTCLIP_CINDY_APP: APP, MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0" }, stdio: ["pipe", "pipe", "ignore"] });
+const w = spawn(process.execPath, [path.join(ROOT, "dist/montclip/node/worker.cjs")], { env: { ...process.env, MONTCLIP_CINDY_APP: APP, MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0" }, stdio: ["pipe", "pipe", "ignore"] });
 let id = 0; const pend = new Map(); let buf = "";
 w.stdout.on("data", (c) => { buf += c; let i; while ((i = buf.indexOf("\n")) >= 0) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); pend.get(m.id)?.(m); } });
 const rpc = (method, params = {}) => new Promise((r) => { const n = ++id; pend.set(n, r); w.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: n, method, params }) + "\n"); });
@@ -22,7 +22,7 @@ async function cdp(wsUrl) {
   const s = (await rpc("montclip/start")).result;
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), "mc-edge-"));
   const port = 9000 + Math.floor(Math.random() * 500);
-  const b = spawn(require(path.join(ROOT, "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", s.url], { stdio: "ignore" });
+  const b = spawn(require(path.join(ROOT, "engine", "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", s.url], { stdio: "ignore" });
   await sleep(4000);
   const u = new URL(s.url); u.pathname = "/cindy/panel.html";
   const tab = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(u.href)}`, { method: "PUT" })).json();
