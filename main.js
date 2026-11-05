@@ -61,6 +61,12 @@ function publicStart(s) { const o = Object.assign({}, s); delete o.url; return o
    cindy.downloads (given the SHA-256 and exact size) and unpacked by the worker, which measures the size and SHA-256 again and checks it is LGPL.
    One install at a time, whether the chat or the editor tab's banner asked. Progress goes to the plugin's pages. */
 let installing = null, lastDownloadPhase = null;
+/* Cindy keys its download cache by the download id, and its plugin manual (§4.12) has no call to drop a cached file or
+   force a fresh download. So once a downloaded archive fails the worker's check, later attempts ask under a new id
+   (ffmpeg-<platform>-r<n>-<time>); a plain download failure keeps the id, so Cindy can resume its partial file. */
+const CHECK_FAILED = ["SIZE_MISMATCH", "SHA256_MISMATCH", "BAD_ARCHIVE"];
+let checkFailures = 0, retryStamp = "";
+const downloadId = (platform) => "ffmpeg-" + platform + (checkFailures ? "-r" + checkFailures + "-" + retryStamp : "");
 function installFfmpeg() {
   if (installing) return installing;
   installing = (async () => {
@@ -71,7 +77,7 @@ function installFfmpeg() {
       return { error: 'This Cindy cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
     channel.postMessage({ type: 'ffmpeg-progress', phase: 'queued' });
     lastDownloadPhase = null;
-    const d = await cindy.downloads.start({ id: 'ffmpeg-' + spec.platform, url: spec.url, sha256: spec.sha256, bytes: spec.bytes });
+    const d = await cindy.downloads.start({ id: downloadId(spec.platform), url: spec.url, sha256: spec.sha256, bytes: spec.bytes });
     if (!d.ok) {
       // Cindy reports a failed download without a code (downloadSlot.ts L309–316); its progress said whether it was cancelled
       const code = d.errorCode || (lastDownloadPhase === 'cancelled' ? 'CANCELLED' : 'DOWNLOAD_FAILED');
@@ -84,6 +90,7 @@ function installFfmpeg() {
       channel.postMessage({ type: 'ffmpeg-progress', phase: 'installed', version: out.version });
       return { download: { bytes: d.bytes, sha256: d.sha256, fromCache: d.fromCache }, install: out };
     } catch (e) {
+      if (CHECK_FAILED.includes(e.code)) { checkFailures++; retryStamp = Date.now().toString(36); }
       channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: String(e.message || e) });
       return { error: String(e.message || e), code: e.code || 'INSTALL_FAILED', ...(e.need ? { need: e.need } : {}) };
     }
