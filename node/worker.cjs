@@ -143,7 +143,7 @@ const METHODS = {
     const rt = asrRuntime(), plan = planAsr(rt, PLATFORM, DATA), where = placesOk(rt, PLATFORM, DATA);
     // nothing is asked or fetched when the folders are not the plugin's own (a link into media/ …)
     if (!where.ok) throw Object.assign(new Error(where.why), { code: where.code });
-    return { supported: plan.supported, platform: PLATFORM, release: rt.release, bytes: plan.bytes, mb: aboutMbFrom(APP)(plan.bytes),
+    return { supported: plan.supported, platform: PLATFORM, release: rt.release, fileHost: rt.fileHost, bytes: plan.bytes, mb: aboutMbFrom(APP)(plan.bytes),
       missing: plan.missing.map((i) => ({ name: i.name, url: rt.base + i.name, bytes: i.bytes, sha256: i.sha256, license: i.license })) };
   },
   /* … and installing them: params.names in order, params.downloads.f0, f1, … the host's files (read before this request

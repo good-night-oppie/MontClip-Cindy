@@ -2,6 +2,8 @@
   "comment": "On-device transcription for the plugin (Deja's decision on P8, 2026-11-05): downloaded the first time it is needed, only after the user agreed in the host's confirm box, only from this GitHub release of good-night-oppie/MontClip (the files as published upstream, unchanged; `origin` says where each was taken from). The worker checks bytes and SHA-256 again and installs into the data folder: asr/ (engine, VAD) and asr-models/ (the model), whole or not at all. The model and the VAD are the ones engine/desktop/asr-manifest.json pins. Licences: the texts in engine/licenses/asr/ (LICENSES.md).",
   "release": "asr-runtime-2.0.1-montclip1",
   "base": "https://github.com/good-night-oppie/MontClip/releases/download/asr-runtime-2.0.1-montclip1/",
+  "fileHostNote": "Where a release download goes: github.com answers 302 to this host (measured 2026-11-05 from Windows and from europa). ghost.json declares both; the confirm box names it.",
+  "fileHost": "release-assets.githubusercontent.com",
   "items": [
     { "name": "sherpa-onnx-node-2.0.1.tgz", "kind": "npm", "into": "asr/engine/node_modules/sherpa-onnx-node", "platforms": ["linux-x64", "win32-x64"],
       "bytes": 12709, "sha256": "06ef8dfb9ea0f3cc77c1866620cbe05bf11b7dd70a973a454b77ce4a66cbcee1",
