@@ -286,5 +286,17 @@ function folderOfJob(file, job) {
   } catch { return null; }
 }
 
-module.exports = { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+/* The speech model's size for the status card (JJ, 2026-11-05: MB rounded to 10, from the manifest's bytes, one function
+   with the engine's sentences). aboutMbFrom(appDir) is the engine's own aboutMb (asr-status.js, MontClip#165); an
+   engine without it gets the same rule here — 与 engine asr-status.js aboutMb 同源，引擎带上 #165 后去掉. */
+function aboutMbFrom(appDir) {
+  try { const f = require(path.join(appDir, "asr-status.js")).aboutMb; if (typeof f === "function") return f; } catch { }
+  return (bytes) => Math.round((+bytes || 0) / 1e6 / 10) * 10;
+}
+/** The Paraformer files' bytes in the manifest, as MB through `aboutMb`; null when the manifest has none. */
+function asrModelMb(manifest, aboutMb) {
+  const files = manifest && manifest.models && manifest.models.asr && manifest.models.asr.files;
+  return files ? aboutMb(Object.values(files).reduce((n, f) => n + f.size, 0)) : null;
+}
+module.exports = { aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };

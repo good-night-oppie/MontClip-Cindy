@@ -15,7 +15,7 @@ const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
-  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob } = require("./lib.cjs");
+  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb } = require("./lib.cjs");
 
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
 
@@ -141,10 +141,11 @@ const METHODS = {
     const b = r.status === 200 && r.body ? r.body : {};
     const ready = (x) => !!(x && x.ready);
     const native = fs.existsSync(path.join(ASR_DIR, "engine", "node_modules", ASR_NATIVE, "package.json"));
-    // the speech model's size, for the card's 「约 … MB」: the Paraformer files' bytes in the engine's desktop/asr-manifest.json
-    let modelBytes = null;
-    try { modelBytes = Object.values(JSON.parse(fs.readFileSync(path.join(APP, "desktop", "asr-manifest.json"), "utf8")).models.asr.files).reduce((n, f) => n + f.size, 0); } catch { }
-    return { engine: ready(b.engine) && ready(b.vad) && native, model: ready(b.asr), punct: ready(b.punct), native: ASR_NATIVE, modelBytes,
+    // the speech model's size, for the card's 「约 … MB」: the Paraformer files' bytes in the engine's desktop/asr-manifest.json,
+    // through the engine's own aboutMb (lib.cjs aboutMbFrom)
+    let modelMb = null;
+    try { modelMb = asrModelMb(JSON.parse(fs.readFileSync(path.join(APP, "desktop", "asr-manifest.json"), "utf8")), aboutMbFrom(APP)); } catch { }
+    return { engine: ready(b.engine) && ready(b.vad) && native, model: ready(b.asr), punct: ready(b.punct), native: ASR_NATIVE, modelMb,
       engineDir: ASR_DIR, modelsDir: ASR_MODELS_DIR, missing: (b.asr && b.asr.missing) || [] };
   },
   /* ffmpeg for export and noise reduction: what to fetch (main.js downloads it with cindy.downloads) … */
