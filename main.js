@@ -291,7 +291,9 @@ function openEditorFailed(error, code) {
 }
 /* 听写 on the status card: installed, or what is missing (JJ's final words, 2026-11-05, P8). The plugin's pages are
    Chinese for now; the English is kept for when they follow the interface language. The model's size comes from the
-   engine's desktop/asr-manifest.json (the worker's modelBytes), as JJ writes it: MiB to the nearest 10. */
+   engine's desktop/asr-manifest.json (the worker's modelBytes), through aboutMb. */
+/** A download's size as the cards say it (DD on #7): MB of 1,000,000 bytes, to the nearest 10 — 243,446,974 → 240. */
+function aboutMb(bytes) { return Math.round((+bytes || 0) / 1e6 / 10) * 10; }
 const ASR_CARD = {
   zh: { ready: '已装好', model: (mb) => '还没装听写模型（约 ' + mb + ' MB）', engine: '这台电脑上还没有听写程序' },
   en: { ready: 'Installed', model: (mb) => 'Speech model not installed yet (about ' + mb + ' MB)', engine: 'No transcription program on this computer yet' },
@@ -300,10 +302,24 @@ function asrLine(a, lang) {
   const t = ASR_CARD[lang === 'en' ? 'en' : 'zh'];
   if (!a) return '—';
   if (a.engine && a.model) return t.ready;
-  return a.engine ? t.model(Math.round((+a.modelBytes || 0) / 1048576 / 10) * 10) : t.engine;
+  return a.engine ? t.model(aboutMb(a.modelBytes)) : t.engine;
+}
+/** The status card's values, in order (the card and its height estimate read the same list). */
+function statusRows(s, editorOpen) {
+  const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
+  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
+}
+/** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
+ *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
+function statusCardHeight(s, editorOpen) {
+  const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
+  const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
+  return Math.min(900, Math.max(120, 24 + 26 + rows + (editorOpen ? 0 : 42) + 6));
 }
 function statusCard(s, editorOpen) {
-  const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
+  // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
+  // the column, and wrapped at 280 px), so the values form one column
+  const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
@@ -358,7 +374,7 @@ const HANDLERS = {
     const open = !!(editor && editor.status === 200);
     let asr = null;
     try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: open ? 140 : 180 });
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
     return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor

@@ -81,20 +81,21 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
   const cases = [["nothing installed", { engine: false, model: false, modelBytes: b }], ["no model", { engine: true, model: false, modelBytes: b }], ["not known", null]];
   for (const width of [280, 360]) for (const [what, asr] of cases) {
-    const card = ctx.statusCard({ ffmpeg: "missing", project: "演示任务的项目", asr }, false);
+    const s = { ffmpeg: "missing", project: "演示任务的项目", asr };
+    const card = ctx.statusCard(s, false);
     const page = path.join(dir, `card-${width}-${cases.findIndex((c) => c[0] === what)}.html`);
     fs.writeFileSync(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;width:${width}px;font:13px system-ui,sans-serif">${card}` +
       `<script>const root=document.body.firstElementChild, rows=[...root.querySelectorAll('div[style*="display:flex"]')];` +
       `const btn=root.querySelector('button'), r=root.getBoundingClientRect(), b=btn?btn.getBoundingClientRect():null;` +
-      `document.body.setAttribute('data-m', JSON.stringify({values: rows.map(x=>x.children[1].getBoundingClientRect().left), labelLines: rows.map(x=>Math.round(x.children[0].getBoundingClientRect().height)), bottomGap: b ? r.bottom-b.bottom : null, height: r.height}));</script></body>`);
+      `document.body.setAttribute('data-m', JSON.stringify({values: rows.map(x=>x.children[1].getBoundingClientRect().left), labelLines: rows.map(x=>{const g=document.createRange();g.selectNodeContents(x.children[0]);return new Set([...g.getClientRects()].map(q=>Math.round(q.top))).size;}), bottomGap: b ? r.bottom-b.bottom : null, height: r.height}));</script></body>`);
     const out = execFileSync(BROWSER, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${path.join(dir, "profile")}`,
       `--window-size=${width},800`, "--dump-dom", "file:///" + page.replace(/\\/g, "/")], { encoding: "utf8", timeout: 60000 });
     const m = JSON.parse(/data-m="([^"]*)"/.exec(out)[1].replace(/&quot;/g, '"'));
     assert.equal(m.values.length, 4, what);
     assert.ok(Math.max(...m.values) - Math.min(...m.values) < 1, `${width} px, ${what}: values start at ${m.values.map(Math.round)}`);
-    assert.ok(m.labelLines.every((h) => h < 30), `${width} px, ${what}: every label on one line (${m.labelLines})`);
+    assert.ok(m.labelLines.every((n) => n === 1), `${width} px, ${what}: every label on one line (lines: ${m.labelLines})`);
     assert.ok(m.bottomGap >= 8, `${width} px, ${what}: the button is ${m.bottomGap} px from the bottom`);
-    const est = ctx.statusCardHeight({ asr }, false);
+    const est = ctx.statusCardHeight(s, false);
     assert.ok(est >= m.height - 4, `${width} px, ${what}: estimated ${est} px for a card ${Math.round(m.height)} px tall`);
   }
 });
