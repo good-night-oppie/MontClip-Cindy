@@ -6,13 +6,47 @@
 
      planAsr(runtime, platform, data) → {supported, platform, release, items, missing, bytes}
      installAsr({runtime, platform, data, files: {name: path}, tmpDir}) → {installed: [name…]}
-   `data` is the plugin's data folder; each item's `into` is relative to it (asr/…, asr-models/…). */
+     placesOk(runtime, platform, data) → {ok} | {ok:false, code:"ASR_DIR_REFUSED", why}
+   `data` is the plugin's data folder; each item's `into` is relative to it (asr/…, asr-models/…).
+
+   Where it may go (QQ, 2026-11-05): only data/asr and data/asr-models — the folders the engine is told about
+   (MONTCLIP_ASR_DIR, MONTCLIP_ASR_MODELS_DIR) — and never inside a folder the server writes, the list #146 keeps for
+   ffmpeg (media, library, .uploads, analysis with its proxies and frames, exports, projects), compared after resolving
+   links, so a link or junction from data/asr into media/ is refused. Nothing is written then. */
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
 
 const MARK = ".montclip-asr.json";   // an unpacked package: which tarball it came from
+/* the folders under the data folder the server writes (#146's deny list for programs); proxies and frames are in analysis */
+const DENY = ["media", "library", ".uploads", "analysis", "exports", "projects"];
+const ALLOW = ["asr", "asr-models"];
+/* The real spelling of a path, even of one that does not exist yet: realpath the nearest folder that does and add the
+   rest (as #146's ffmpeg-path.js does), lower case on Windows. */
+function real(p) {
+  let head = path.resolve(p);
+  const rest = [];
+  for (;;) {
+    try { head = fs.realpathSync.native(head); break; } catch { }
+    const up = path.dirname(head);
+    if (up === head) break;
+    rest.unshift(path.basename(head)); head = up;
+  }
+  const r = rest.length ? path.join(head, ...rest) : head;
+  return process.platform === "win32" ? r.toLowerCase() : r;
+}
+const inside = (f, d) => f === d || f.startsWith(d.endsWith(path.sep) ? d : d + path.sep);
+function placesOk(runtime, platform, data) {
+  const allow = ALLOW.map((d) => real(path.join(data, d))), deny = DENY.map((d) => real(path.join(data, d)));
+  for (const it of forPlatform(runtime, platform)) {
+    const dest = real(path.join(data, it.into));
+    if (!allow.some((d) => inside(dest, d) && dest !== d) || deny.some((d) => inside(dest, d)))
+      return { ok: false, code: "ASR_DIR_REFUSED", why: it.name + " would go to " + it.into + ", outside data/asr and data/asr-models or into a folder the server writes" };
+  }
+  for (const [k, d] of ALLOW.entries()) if (deny.some((x) => inside(allow[k], x))) return { ok: false, code: "ASR_DIR_REFUSED", why: "data/" + d + " leads into a folder the server writes" };
+  return { ok: true };
+}
 
 function sha256File(file) {
   const h = crypto.createHash("sha256"), fd = fs.openSync(file, "r"), buf = Buffer.alloc(1 << 20);
@@ -64,15 +98,19 @@ function move(from, to) {
   }
 }
 
-function installAsr({ runtime, platform, data, files, tmpDir, extract = extractTgz }) {
+function installAsr({ runtime, platform, data, files, tmpDir, extract = extractTgz, hash = sha256File, size: sizeOf = (f) => fs.statSync(f).size }) {
+  const where = placesOk(runtime, platform, data);
+  if (!where.ok) throw Object.assign(new Error(where.why), { code: where.code });
+  if (DENY.map((d) => real(path.join(data, d))).some((d) => inside(real(tmpDir), d)))
+    throw Object.assign(new Error("the staging folder is inside a folder the server writes"), { code: "ASR_DIR_REFUSED" });
   const todo = planAsr(runtime, platform, data).missing;
   // every file first: handed over, the pinned size, the pinned SHA-256 (measured here, not taken on trust)
   for (const it of todo) {
     const f = files && files[it.name];
     if (!f || !fs.existsSync(f)) throw Object.assign(new Error("no downloaded file was handed over for " + it.name), { code: "NO_FILE", file: it.name });
-    const size = fs.statSync(f).size;
+    const size = sizeOf(f);   // the exact byte count first: a wrong size is refused before any hashing
     if (size !== it.bytes) throw Object.assign(new Error(`${it.name}: size mismatch: got ${size} bytes, pinned ${it.bytes}`), { code: "SIZE_MISMATCH", file: it.name });
-    const got = sha256File(f);
+    const got = hash(f);
     if (got !== it.sha256) throw Object.assign(new Error(`${it.name}: SHA-256 mismatch: got ${got}, pinned ${it.sha256}`), { code: "SHA256_MISMATCH", file: it.name });
   }
   fs.mkdirSync(tmpDir, { recursive: true });
@@ -104,4 +142,4 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
   } finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { planAsr, installAsr, sha256File };
+module.exports = { planAsr, installAsr, placesOk, sha256File, DENY, ALLOW };
