@@ -189,3 +189,37 @@ test("the button sits on the status card's 「听写（语音转文字）」 lin
   assert.ok(missing.includes('data-ghost-action="install-asr"') && missing.includes(AGAIN), missing);
   assert.ok(!card({ engine: true, model: true, modelBytes: 1 }).includes('data-ghost-action="install-asr"'), "no button once installed");
 });
+
+/* QQ's points for this PR (2026-11-05): bytes are compared before SHA-256 is computed; and the download goes only into
+   the plugin's own folders — data/asr and data/asr-models — never into a folder the server writes, the same list as
+   #146's (media, library, .uploads, analysis with proxies and frames, exports, projects), even through a link. */
+test("bytes first: a file of the wrong size is refused before its SHA-256 is computed", (t) => {
+  const { installAsr } = require("../node/asr-install.cjs");
+  const w = world(t);
+  fs.writeFileSync(w.handed["tokens.txt"], "tokens!");
+  const hashed = [];
+  const hash = (f) => { hashed.push(path.basename(f)); return sha(fs.readFileSync(f)); };
+  assert.throws(() => installAsr({ runtime: w.runtime, platform: "linux-x64", data: w.data, files: w.handed, tmpDir: w.dir, hash }), (e) => e.code === "SIZE_MISMATCH");
+  assert.ok(!hashed.includes("host-tokens.txt"), "the wrong-size file was never hashed: " + hashed);
+  const w2 = world(t), order = [];
+  installAsr({ runtime: w2.runtime, platform: "linux-x64", data: w2.data, files: w2.handed, tmpDir: w2.dir,
+    hash: (f) => { order.push("hash:" + path.basename(f)); return sha(fs.readFileSync(f)); }, size: (f) => { order.push("size:" + path.basename(f)); return fs.statSync(f).size; } });
+  for (const n of Object.keys(w2.handed)) assert.ok(order.indexOf("size:host-" + n) < order.indexOf("hash:host-" + n), "size before hash for " + n + ": " + order);
+});
+
+test("the download folders: only data/asr and data/asr-models, never a folder the server writes, even through a link", (t) => {
+  const { placesOk, DENY, installAsr } = require("../node/asr-install.cjs");
+  assert.deepEqual([...DENY].sort(), ["media", "library", ".uploads", "analysis", "exports", "projects"].sort(), "#146's list (proxies and frames are inside analysis)");
+  const w = world(t);
+  assert.deepEqual(placesOk(w.runtime, "linux-x64", w.data), { ok: true });
+  // data/asr is a link into data/media: refused, nothing is written
+  fs.mkdirSync(path.join(w.data, "media", "x"), { recursive: true });
+  fs.symlinkSync(path.join(w.data, "media", "x"), path.join(w.data, "asr"), "junction");
+  const r = placesOk(w.runtime, "linux-x64", w.data);
+  assert.equal(r.ok, false); assert.equal(r.code, "ASR_DIR_REFUSED");
+  assert.throws(() => installAsr({ runtime: w.runtime, platform: "linux-x64", data: w.data, files: w.handed, tmpDir: w.dir }), (e) => e.code === "ASR_DIR_REFUSED");
+  assert.deepEqual(fs.readdirSync(path.join(w.data, "media", "x")), [], "nothing written through the link");
+  // an item that would go anywhere else is refused too
+  const bad = { ...w.runtime, items: w.runtime.items.map((i, k) => (k ? i : { ...i, into: "media/sherpa-onnx-node" })) };
+  assert.equal(placesOk(bad, "linux-x64", fs.mkdtempSync(path.join(w.dir, "d-"))).code, "ASR_DIR_REFUSED");
+});
