@@ -350,11 +350,18 @@ function openEditorFailed(error, code) {
   logProblem(code || 'TASK_VIEW_FAILED', error);
   return '没能打开剪辑器。再点一次试试。';
 }
-/* 听写 on the status card (drafts for JJ, P8): installed, or what is missing. */
-function asrLine(a) {
-  if (!a) return '没查到';
-  if (a.engine && a.model) return '已装好';
-  return a.engine ? '还没装听写模型（约 230 MB）' : '这台电脑上还没有听写程序';
+/* 听写 on the status card: installed, or what is missing (JJ's final words, 2026-11-05, P8). The plugin's pages are
+   Chinese for now; the English is kept for when they follow the interface language. The model's size comes from the
+   engine's desktop/asr-manifest.json (the worker's modelBytes), as JJ writes it: MiB to the nearest 10. */
+const ASR_CARD = {
+  zh: { ready: '已装好', model: (mb) => '还没装听写模型（约 ' + mb + ' MB）', engine: '这台电脑上还没有听写程序' },
+  en: { ready: 'Installed', model: (mb) => 'Speech model not installed yet (about ' + mb + ' MB)', engine: 'No transcription program on this computer yet' },
+};
+function asrLine(a, lang) {
+  const t = ASR_CARD[lang === 'en' ? 'en' : 'zh'];
+  if (!a) return '—';
+  if (a.engine && a.model) return t.ready;
+  return a.engine ? t.model(Math.round((+a.modelBytes || 0) / 1048576 / 10) * 10) : t.engine;
 }
 function statusCard(s, editorOpen) {
   const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';

@@ -160,7 +160,10 @@ const METHODS = {
     const b = r.status === 200 && r.body ? r.body : {};
     const ready = (x) => !!(x && x.ready);
     const native = fs.existsSync(path.join(ASR_DIR, "engine", "node_modules", ASR_NATIVE, "package.json"));
-    return { engine: ready(b.engine) && ready(b.vad) && native, model: ready(b.asr), punct: ready(b.punct), native: ASR_NATIVE,
+    // the speech model's size, for the card's 「约 … MB」: the Paraformer files' bytes in the engine's desktop/asr-manifest.json
+    let modelBytes = null;
+    try { modelBytes = Object.values(JSON.parse(fs.readFileSync(path.join(APP, "desktop", "asr-manifest.json"), "utf8")).models.asr.files).reduce((n, f) => n + f.size, 0); } catch { }
+    return { engine: ready(b.engine) && ready(b.vad) && native, model: ready(b.asr), punct: ready(b.punct), native: ASR_NATIVE, modelBytes,
       engineDir: ASR_DIR, modelsDir: ASR_MODELS_DIR, missing: (b.asr && b.asr.missing) || [] };
   },
   /* ffmpeg for export and noise reduction: what to fetch (main.js downloads it with cindy.downloads) … */
