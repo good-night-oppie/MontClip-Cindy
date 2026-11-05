@@ -151,3 +151,41 @@ test("a Cindy without the confirm box: nothing is fetched, and it says to update
   assert.equal(r.code, "HOST_TOO_OLD");
   assert.equal(h.starts.length, 0);
 });
+
+/* JJ's four points for the confirm box (Deja, 2026-11-05): which site, how big in all, under which licences, and
+   whether anything else is sent while downloading. And a way back after 〔先不用〕: the box itself, the reply and the
+   card all say where to open the download again — the button on the status card's 「听写（语音转文字）」 line. */
+const AGAIN = "下载听写程序和模型";
+test("the box says the site, the total size, the licences, and that nothing else is sent; 〔下载〕〔先不用〕", async () => {
+  const h = host({ answer: false });
+  await h.install();
+  const { body, confirmText, cancelText } = h.asked[0];
+  assert.equal(confirmText, "下载"); assert.equal(cancelText, "先不用");
+  assert.match(body, /github\.com/);
+  assert.match(body, /一共约 \d+ MB/);
+  assert.match(body, /许可/);
+  assert.match(body, /不会(顺带)?发出/);
+  assert.ok(body.includes("〔" + AGAIN + "〕") && body.includes("状态卡"), "where to open it again: " + body);
+  assert.ok(body.length <= 300, body.length);
+});
+
+test("after 〔先不用〕 the reply says where to open the download again, and asks for nothing", async () => {
+  const h = host({ answer: false });
+  const r = await h.install();
+  assert.equal(r.declined, true);
+  assert.ok(r.note.includes("〔" + AGAIN + "〕"), r.note);
+  assert.match(r.note, /montclip_install_asr/);
+  assert.match(r.note, /do not ask again/i);
+});
+
+test("the button sits on the status card's 「听写（语音转文字）」 line while something is missing", () => {
+  const ctx = {};
+  const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
+  class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
+  vm.runInNewContext(MAIN, Object.assign(ctx, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL }));
+  const card = (asr) => ctx.statusCard({ ffmpeg: "downloaded", project: "p", asr }, true);
+  const line = (html) => html.split('<div style="display:flex').find((d) => d.includes("听写（语音转文字）")) || "";
+  const missing = line(card({ engine: false, model: false, modelBytes: 243446974 }));
+  assert.ok(missing.includes('data-ghost-action="install-asr"') && missing.includes(AGAIN), missing);
+  assert.ok(!card({ engine: true, model: true, modelBytes: 1 }).includes('data-ghost-action="install-asr"'), "no button once installed");
+});
