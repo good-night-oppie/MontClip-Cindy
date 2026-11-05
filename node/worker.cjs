@@ -162,7 +162,7 @@ const METHODS = {
     }
     note({ event: "ffmpeg-installed", version: out.version });
     const restarting = !!started;
-    if (restarting) setTimeout(() => process.exit(0), 300);
+    if (restarting) setTimeout(stopEngine, 300);
     return { ...out, state: ffmpegState(), restarting };
   },
   /* Export (main.js montclip_export): start a job in the engine (the open editor tab, else headless), report it, and
@@ -272,7 +272,19 @@ function dispatch(method, params) {
   return result;
 }
 
-readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+/* Leaving (Cindy closed our stdin, or ffmpeg was just installed): the engine's own shutdown runs first — it stops the
+   ffmpeg each running export spawned (stdin closed, then killed by its handle) and deletes the half-finished files,
+   then exits within ~4 s (server.js shutdown). P11: an export's ffmpeg must never outlive the worker. */
+let leaving = false;
+function stopEngine() {
+  if (leaving) return;
+  leaving = true;
+  note({ event: "worker-stopping", engine: !!started });
+  if (started) process.emit("SIGTERM");   // server.js listens: shutdown() → stopSessions → process.exit
+  else process.exit(0);
+}
+
+readline.createInterface({ input: process.stdin }).on("close", stopEngine).on("line", async (line) => {
   let req;
   try { req = JSON.parse(line); } catch { reply({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }); return; }
   if (req.id === undefined || req.id === null) return;   // a notification: nothing to answer
