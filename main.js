@@ -105,11 +105,10 @@ function installFfmpeg() {
 let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
 const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
 /** The confirm box's words (drafts for JJ; the host keeps at most 300 characters). JJ's four points: which site, how big
- *  in all, under which licences, whether anything else is sent; and the way back after 〔先不用〕. MB as JJ writes it:
- *  MiB to the nearest 10. */
+ *  in all, under which licences, whether anything else is sent; and the way back after 〔先不用〕. The size through aboutMb. */
 const ASR_AGAIN = '下载听写程序和模型';   // the button on the status card's 听写 line, named wherever the way back is told
 function asrConsentText(spec) {
-  const mb = Math.max(10, Math.round(spec.bytes / 1048576 / 10) * 10);
+  const mb = Math.max(10, aboutMb(spec.bytes));   // the cards' one rule (DD on #7)
   const model = spec.missing.some((i) => /paraformer/i.test(i.name)), engine = spec.missing.some((i) => /sherpa|silero/i.test(i.name));
   const what = engine && model ? '听写程序和中文听写模型' : model ? '中文听写模型' : '听写程序';
   const lic = [];
