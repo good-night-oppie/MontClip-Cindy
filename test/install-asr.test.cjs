@@ -105,6 +105,7 @@ function host({ answer = true, confirm = true, missing } = {}) {
       async request(r) {
         if (r.method === "montclip/asr-spec")
           return { ok: true, result: { supported: true, platform: "linux-x64", release: rt.release, missing: items.map((i) => ({ ...i, url: rt.base + i.name })),
+            fileHost: require("../node/lib.cjs").fileHostFrom(JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"))),
             bytes: items.reduce((n, i) => n + i.bytes, 0), mb: require("../node/lib.cjs").aboutMbFrom(path.join(ROOT, "engine"))(items.reduce((n, i) => n + i.bytes, 0)) } };
         if (r.method === "montclip/asr-install") { installs.push(r); return { ok: true, result: { installed: r.params.names } }; }
         return { ok: false, errorCode: "NO", message: r.method };

@@ -127,11 +127,14 @@ var ASR_TEXT = {   // var: the tests read it from main.js's own scope
     dev: '给开发者看（不用管）',
   },
   en: {
-    what: { both: 'the transcription program and a Chinese speech model', model: 'a Chinese speech model', engine: 'the transcription program' },
-    lead: (what, mb) => 'To turn speech into text, MontClip needs to download ' + what + ', about ' + mb + ' MB, once.',
-    from: (host) => "From: MontClip's release page on GitHub (github.com; the files come from " + host + ').',
-    only: "Only these files are downloaded. Your videos, captions and projects are not sent. Each file is checked after download and not installed if it doesn't match.",
-    licence: { lead: 'Licences: ', sep: ', ', end: '.', sherpa: 'sherpa-onnx (Apache-2.0, includes ONNX Runtime, MIT)', silero: 'silero VAD (MIT)', paraformer: 'Paraformer Chinese model (Apache-2.0)' },
+    // JJ's shorter English (2026-11-05): within the host's 300 characters; one bracket for the licences (QQ to say if each
+    // component needs its own — then "Files are checked first." goes to make room)
+    what: { both: 'program + Chinese model', model: 'Chinese model', engine: 'program' },
+    lead: (what, mb) => 'Speech-to-text needs a one-time download (' + what + ', about ' + mb + ' MB).',
+    from: (host) => 'From: github.com, via ' + host + '.',
+    only: 'Your videos, captions and projects are never sent. Files are checked first.',
+    licence: { lead: 'Licences: ', sep: ', ', end: ').', open: ' (', sherpa: 'sherpa-onnx, ONNX Runtime', silero: 'silero VAD', paraformer: 'Paraformer',
+      of: { sherpa: ['Apache-2.0', 'MIT'], silero: ['MIT'], paraformer: ['Apache-2.0'] } },
     yes: (mb) => 'Download (about ' + mb + ' MB)', no: 'Not now',
     button: 'Download transcription program and model…',
     installed: 'The transcription program and model are installed. You can now turn speech into text.',
@@ -145,14 +148,18 @@ var ASR_TEXT = {   // var: the tests read it from main.js's own scope
 const ASR_COPY_BUTTON = false;   // the status card has no 〔复制问题信息〕 yet: failedMore waits for it
 const asrWords = (lang) => ASR_TEXT[lang === 'en' ? 'en' : 'zh'];
 /** The confirm box for what this computer still needs: {body, confirmText, cancelText}. N is the worker's spec.mb (the
- *  engine's aboutMb); the file host is the one a release download redirects to (node/asr-runtime.json fileHost). */
+ *  engine's aboutMb); the file host is the worker's spec.fileHost — the one ghost.json declares besides github.com. */
 function asrConsent(spec, lang) {
   const t = asrWords(lang), mb = Math.max(10, +spec.mb || 0), has = (re) => spec.missing.some((i) => re.test(i.name));
   const model = has(/paraformer/i), engine = has(/sherpa|silero/i);
-  const lic = [has(/sherpa/i) && t.licence.sherpa, has(/silero/i) && t.licence.silero, model && t.licence.paraformer].filter(Boolean);
+  const parts = [has(/sherpa/i) && 'sherpa', has(/silero/i) && 'silero', model && 'paraformer'].filter(Boolean);
+  // zh names each component with its licence; JJ's English names them, then one bracket of their licences
+  const licence = t.licence.of
+    ? t.licence.lead + parts.map((k) => t.licence[k]).join(t.licence.sep) + t.licence.open +
+      ['Apache-2.0', 'MIT'].filter((l) => parts.some((k) => t.licence.of[k].includes(l))).join('/') + t.licence.end
+    : t.licence.lead + parts.map((k) => t.licence[k]).join(t.licence.sep) + t.licence.end;
   return {
-    body: [t.lead(engine && model ? t.what.both : model ? t.what.model : t.what.engine, mb), t.from(spec.fileHost || 'release-assets.githubusercontent.com'), t.only,
-      t.licence.lead + lic.join(t.licence.sep) + t.licence.end].join('\n'),
+    body: [t.lead(engine && model ? t.what.both : model ? t.what.model : t.what.engine, mb), t.from(spec.fileHost), t.only, licence].join('\n'),
     confirmText: t.yes(mb), cancelText: t.no,
   };
 }

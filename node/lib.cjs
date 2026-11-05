@@ -298,5 +298,11 @@ function asrModelMb(manifest, aboutMb) {
   const files = manifest && manifest.models && manifest.models.asr && manifest.models.asr.files;
   return files ? aboutMb(Object.values(files).reduce((n, f) => n + f.size, 0)) : null;
 }
-module.exports = { aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+/** Where a release download's files come from: the host ghost.json declares besides github.com (a GitHub release
+ *  download answers 302 to release-assets.githubusercontent.com — measured 2026-11-05). The confirm box names it. */
+function fileHostFrom(ghost) {
+  const hosts = (ghost && ghost.network && Array.isArray(ghost.network.hosts)) ? ghost.network.hosts : [];
+  return hosts.find((h) => h !== "github.com") || null;
+}
+module.exports = { aboutMbFrom, asrModelMb, fileHostFrom, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };
