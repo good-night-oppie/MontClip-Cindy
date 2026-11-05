@@ -36,10 +36,11 @@ const JJ = {
     dev: "给开发者看（不用管）",
   },
   en: {
-    body: (n, host) => `To turn speech into text, MontClip needs to download the transcription program and a Chinese speech model, about ${n} MB, once.\n` +
-      `From: MontClip's release page on GitHub (github.com; the files come from ${host}).\n` +
-      "Only these files are downloaded. Your videos, captions and projects are not sent. Each file is checked after download and not installed if it doesn't match.\n" +
-      "Licences: sherpa-onnx (Apache-2.0, includes ONNX Runtime, MIT), silero VAD (MIT), Paraformer Chinese model (Apache-2.0).",
+    // JJ's shorter English (2026-11-05), within the host's 300 characters
+    body: (n, host) => `Speech-to-text needs a one-time download (program + Chinese model, about ${n} MB).\n` +
+      `From: github.com, via ${host}.\n` +
+      "Your videos, captions and projects are never sent. Files are checked first.\n" +
+      "Licences: sherpa-onnx, ONNX Runtime, silero VAD, Paraformer (Apache-2.0/MIT).",
     yes: (n) => `Download (about ${n} MB)`, no: "Not now",
     button: "Download transcription program and model…",
     installed: "The transcription program and model are installed. You can now turn speech into text.",
@@ -58,13 +59,19 @@ function load() {
   vm.runInNewContext(MAIN, ctx);
   return ctx;
 }
-const spec = (platform, items = itemsFor(platform)) => ({ supported: true, platform, release: RT.release, fileHost: RT.fileHost,
-  missing: items.map((i) => ({ ...i, url: RT.base + i.name })), bytes: bytesOf(items), mb: about(bytesOf(items)) });
+const GHOST = JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"));
+const fileHostOf = () => require("../node/lib.cjs").fileHostFrom(GHOST);
+const spec = (platform, items = itemsFor(platform), mb = about(bytesOf(items))) => ({ supported: true, platform, release: RT.release, fileHost: fileHostOf(),
+  missing: items.map((i) => ({ ...i, url: RT.base + i.name })), bytes: bytesOf(items), mb });
+/** Characters as wc -m counts them: Unicode code points, not UTF-16 units. */
+const chars = (t) => [...t].length;
 
-test("the real file host: what a release download redirects to, the host ghost.json declares, the one the box names", () => {
-  assert.equal(RT.fileHost, HOST, "measured: github.com/…/releases/download/… → 302 → " + HOST);
-  const g = JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"));
-  assert.deepEqual(g.network.hosts.slice().sort(), ["github.com", RT.fileHost].sort(), "ghost.json declares exactly github.com and the file host");
+test("the real file host: the one ghost.json declares besides github.com — what a release download redirects to — is the one both boxes name", () => {
+  assert.deepEqual(GHOST.network.hosts.slice().sort(), ["github.com", HOST].sort(), "measured: github.com/…/releases/download/… → 302 → " + HOST);
+  assert.equal(fileHostOf(), HOST, "taken from ghost.json, not written by hand");
+  assert.ok(!("fileHost" in RT), "one place for it: ghost.json");
+  const w = fs.readFileSync(path.join(ROOT, "node", "worker.cjs"), "utf8");
+  assert.match(w, /fileHostFrom\(/, "the worker hands the box ghost.json's host");
 });
 
 test("the confirm box: JJ's words with everything missing, Chinese and English; N by aboutMb", () => {
@@ -80,20 +87,26 @@ test("the confirm box: JJ's words with everything missing, Chinese and English; 
   assert.equal(about(bytesOf(itemsFor("linux-x64"))), 260); assert.equal(about(bytesOf(itemsFor("win32-x64"))), 250);
 });
 
-test("the host's limits, everything missing: the Chinese box fits (≤ 300 characters, buttons ≤ 12)", () => {
+test("the host's 300 characters: both boxes fit with everything missing, and with N = 9999 (counted as wc -m does)", () => {
   const { asrConsent } = load();
-  for (const platform of ["linux-x64", "win32-x64"]) {
-    const c = asrConsent(spec(platform), "zh");
-    assert.ok(c.body.length <= 300, `${platform}: ${c.body.length} characters`);
-    assert.ok(c.confirmText.length <= 12 && c.cancelText.length <= 12, `${platform}: ${c.confirmText} / ${c.cancelText}`);
+  for (const platform of ["linux-x64", "win32-x64"]) for (const lang of ["zh", "en"]) for (const mb of [about(bytesOf(itemsFor(platform))), 9999]) {
+    const c = asrConsent(spec(platform, itemsFor(platform), mb), lang);
+    assert.ok(chars(c.body) <= 300, `${platform} ${lang} N=${mb}: ${chars(c.body)} characters`);
   }
 });
 
-test("the host's limits for the English box (the plugin's pages are Chinese for now)", { todo: "JJ's English is longer than the host shows: see MontClip-Cindy#8 — the counts are in the PR" }, () => {
+test("the host's 12 characters for a button: the Chinese buttons fit", () => {
+  const { asrConsent } = load();
+  for (const platform of ["linux-x64", "win32-x64"]) {
+    const c = asrConsent(spec(platform), "zh");
+    assert.ok(chars(c.confirmText) <= 12 && chars(c.cancelText) <= 12, `${platform}: ${c.confirmText} / ${c.cancelText}`);
+  }
+});
+
+test("the host's 12 characters for the English 〔Download (about N MB)〕 (the plugin's pages are Chinese for now)", { todo: "23 characters: JJ to shorten the English button — MontClip-Cindy#8" }, () => {
   const { asrConsent } = load();
   const c = asrConsent(spec("linux-x64"), "en");
-  assert.ok(c.body.length <= 300, `${c.body.length} characters`);
-  assert.ok(c.confirmText.length <= 12, `${c.confirmText.length} characters: ${c.confirmText}`);
+  assert.ok(chars(c.confirmText) <= 12, `${chars(c.confirmText)} characters: ${c.confirmText}`);
 });
 
 test("the status card's words after its button, and the button's own name from the same key", () => {
