@@ -58,7 +58,7 @@ async function engineTools() {
 function publicStart(s) { const o = Object.assign({}, s); delete o.url; return o; }
 
 /* ffmpeg (export, noise reduction): the pinned LGPL build the Windows app bundles, ~160 MB from GitHub, fetched by
-   cindy.downloads (SHA-256 and exact size checked by Cindy) and unpacked by the worker, which checks it is LGPL.
+   cindy.downloads (given the SHA-256 and exact size) and unpacked by the worker, which measures the size and SHA-256 again and checks it is LGPL.
    One install at a time, whether the chat or the editor tab's banner asked. Progress goes to the plugin's pages. */
 let installing = null, lastDownloadPhase = null;
 function installFfmpeg() {
