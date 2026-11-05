@@ -14,7 +14,7 @@ const RULES = {
   project: 'Times are seconds on the timeline. To cut a range out of the edit (e.g. "删掉 1:00–1:30"), call fablecut_patch_project with {ops:[{op:"extract", from:60, to:90}]} — extract closes the gap, lift leaves it. Read the timeline with fablecut_get_project {compact:true} first and pass its revision as baseRevision. Every edit becomes one step of the open editor\'s undo stack: montclip_undo / montclip_redo take it back or put it back. Import a large local recording with fablecut_import_media {path, link:true} (no second copy on disk).',
   versions: 'fablecut_versions {action:"list"} lists checkpoints; {action:"save", name} makes one before a big edit; {action:"restore", version} goes back to one — what was there is saved as a version first. Restore only when the user asked.',
   audio: 'These change clip gain / keyframes / cuts in the open project; each is one undo step in the editor.',
-  speech: 'Transcription runs in the open editor tab (montclip_open_task_view) or headless. Captions are text clips timed to the words.',
+  speech: 'Transcription runs on this computer (the speech engine and the Paraformer zh model, after a VAD); the open editor tab or a headless one only relays it. Clips of a long recording are listened to in their windows only; mediaIds (or find over a whole replay) listens to all of it, minutes for hours. montclip_status says whether the engine and the model are installed here; when they are not, fablecut_transcribe says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING) — tell the user plainly, never fetch them yourself. Captions are text clips timed to the words.',
   export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_status says whether it is installed.',
 };
 const categoryOf = (name) => Object.keys(CATEGORIES).find((c) => CATEGORIES[c].includes(name)) || 'other';
@@ -289,12 +289,18 @@ function openEditorFailed(error, code) {
   logProblem(code || 'TASK_VIEW_FAILED', error);
   return '没能打开剪辑器。再点一次试试。';
 }
+/* 听写 on the status card (drafts for JJ, P8): installed, or what is missing. */
+function asrLine(a) {
+  if (!a) return '没查到';
+  if (a.engine && a.model) return '已装好';
+  return a.engine ? '还没装听写模型（约 230 MB）' : '这台电脑上还没有听写程序';
+}
 function statusCard(s, editorOpen) {
   const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('听写（语音转文字）', asrLine(s.asr)) +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -343,8 +349,12 @@ const HANDLERS = {
     let editor = null;
     try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: String(e.message) }; }
     const open = !!(editor && editor.status === 200);
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name }, open), height: open ? 120 : 160 });
-    return { engine: publicStart(s), editorTab: editor && editor.status === 200 ? editor
+    let asr = null;
+    try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: open ? 140 : 180 });
+    return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+      note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
+      editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
   },
   async list_tools(args) {
