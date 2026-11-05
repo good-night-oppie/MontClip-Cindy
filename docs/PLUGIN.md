@@ -49,8 +49,9 @@ The second shell around the one MontClip engine (the repository root). The first
   and the exact size; progress shows in the banner), and the worker installs it with `desktop/fetch-ffmpeg.cjs`'s
   staged install and LGPL check (no `--enable-gpl` / `--enable-nonfree`, `-L` says LGPL). The engine then restarts
   to use it; the editor tab follows and keeps its undo history. `montclip_status` reports `downloaded`, `changed`
-  (the files differ from what was installed) or `missing`. Only Windows x64 is offered for now (the manifest pins
-  the byte count only for it).
+  (the files differ from what was installed) or `missing`. Windows x64 is offered; Linux x64 is offered once the
+  pinned engine has the Linux byte count (MontClip #150). The Linux build has no H.264 encoder that runs without a
+  GPU, so H.264 export there needs more.
 
 - **Export.** `montclip_export {preset?, range?, folder?}` asks for a folder in the system dialog (`cindy.pick`, the
   user's own choice; `folder:"default"` skips it), starts the engine's export (the open editor tab, else headless),
