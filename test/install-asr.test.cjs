@@ -48,7 +48,7 @@ function world(t) {
   const pkg = path.join(dir, "src", "package"); fs.mkdirSync(pkg, { recursive: true });
   fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"sherpa-onnx-node"}'); fs.writeFileSync(path.join(pkg, "addon.js"), "x");
   const tgz = path.join(dir, "node.tgz");
-  execFileSync("tar", ["-czf", tgz, "-C", path.join(dir, "src"), "package"]);
+  execFileSync(process.platform === "win32" ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe") : "tar", ["-czf", tgz, "-C", path.join(dir, "src"), "package"]);
   const files = { "node.tgz": fs.readFileSync(tgz), "vad.onnx": Buffer.from("vad"), "model.onnx": Buffer.from("model"), "tokens.txt": Buffer.from("tokens") };
   const items = [
     { name: "node.tgz", kind: "npm", into: "asr/engine/node_modules/sherpa-onnx-node", platforms: ["linux-x64"] },

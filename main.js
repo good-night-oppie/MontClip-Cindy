@@ -97,7 +97,68 @@ function installFfmpeg() {
   })().finally(() => { installing = null; });
   return installing;
 }
+/* On-device transcription (P8, Deja 2026-11-05): the speech engine, the VAD and the Paraformer model are downloaded the
+   first time, from MontClip's own GitHub release only (node/asr-runtime.json pins url, SHA-256 and bytes), and only
+   after the user said yes in the host's own confirm box — where from, how big, under which licences. Nothing is
+   fetched before that, and a no is not asked again in other words. The worker measures every file again and puts
+   them in place all together or not at all. One install at a time. */
+let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
+const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
+/** The confirm box's words (drafts for JJ; the host keeps at most 300 characters). MB as JJ writes it: MiB to the nearest 10. */
+function asrConsentText(spec) {
+  const mb = Math.max(10, Math.round(spec.bytes / 1048576 / 10) * 10);
+  const model = spec.missing.some((i) => /paraformer/i.test(i.name)), engine = spec.missing.some((i) => /sherpa|silero/i.test(i.name));
+  const what = engine && model ? '听写程序和中文听写模型' : model ? '中文听写模型' : '听写程序';
+  const lic = [];
+  if (spec.missing.some((i) => /sherpa/i.test(i.name))) lic.push('sherpa-onnx（Apache-2.0，内含 ONNX Runtime，MIT）');
+  if (spec.missing.some((i) => /silero/i.test(i.name))) lic.push('silero VAD（MIT）');
+  if (model) lic.push('Paraformer 中文模型（Apache-2.0）');
+  return '要把说的话转成文字，先要下载' + what + '，共约 ' + mb + ' MB，只下一次。\n' +
+    '来源：github.com 上 MontClip 的发布页（下载时可能会转到 GitHub 存文件的网站）。\n' +
+    '许可：' + lic.join('、') + '。\n' +
+    '只下载这些文件，不会发送你的录像、字幕或项目。下载完会逐个核对，对不上就不装。';
+}
+function installAsr() {
+  if (asrInstalling) return asrInstalling;
+  asrInstalling = (async () => {
+    const spec = await node('montclip/asr-spec');
+    if (!spec.supported) return { error: 'MontClip has no speech engine for ' + spec.platform, code: 'UNSUPPORTED_PLATFORM' };
+    if (!spec.missing.length) return { installed: true, already: true };
+    if (typeof cindy.confirm !== 'function' || typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
+      return { error: 'This Cindy cannot ask before downloading, or cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
+    const asked = await cindy.confirm({ body: asrConsentText(spec), confirmText: '下载', cancelText: '先不下' });
+    if (!asked || !asked.ok) return { error: 'Could not ask the user (' + ((asked && asked.errorCode) || 'no answer') + '); nothing was downloaded.', code: 'NOT_ASKED' };
+    if (!asked.confirmed) return { declined: true, note: 'The user said no: nothing was downloaded. Do not ask again unless she asks for it.' };
+    channel.postMessage({ type: 'asr-progress', phase: 'queued' });
+    const tokens = {};
+    for (let k = 0; k < spec.missing.length; k++) {
+      const it = spec.missing[k];
+      const d = await cindy.downloads.start({ id: asrDownloadId(it.name), url: it.url, sha256: it.sha256, bytes: it.bytes });
+      if (!d || !d.ok) {
+        const code = (d && d.errorCode) || 'DOWNLOAD_FAILED';
+        channel.postMessage({ type: 'asr-progress', phase: 'failed', code, file: it.name });
+        return { error: (d && (d.message || d.errorCode)) || 'download failed', code, file: it.name };
+      }
+      tokens['f' + k] = d.token;
+    }
+    channel.postMessage({ type: 'asr-progress', phase: 'installing' });
+    try {
+      const out = await node('montclip/asr-install', { names: spec.missing.map((i) => i.name) }, { downloadTokens: tokens, timeoutMs: 600000 });
+      channel.postMessage({ type: 'asr-progress', phase: 'installed' });
+      return { installed: true, files: out.installed, stillMissing: out.missing };
+    } catch (e) {
+      if (['SIZE_MISMATCH', 'SHA256_MISMATCH', 'BAD_ARCHIVE'].includes(e.code)) { asrCheckFailures++; asrRetryStamp = Date.now().toString(36); }
+      channel.postMessage({ type: 'asr-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED' });
+      return { error: String(e.message || e), code: e.code || 'INSTALL_FAILED' };
+    }
+  })().finally(() => { asrInstalling = null; });
+  return asrInstalling;
+}
 function onDownloadProgress(d) {
+  if (d && String(d.id || '').startsWith('asr-')) {
+    if (d.phase !== 'failed' && d.phase !== 'cancelled') channel.postMessage({ type: 'asr-progress', phase: d.phase, id: d.id, loaded: d.loaded, total: d.total, speedBps: d.speedBps });
+    return;
+  }
   if (!d || !String(d.id || '').startsWith('ffmpeg-')) return;
   lastDownloadPhase = d.phase;
   // how it ended is said once, with its code, by installFfmpeg (Cindy's own failed / cancelled carry none)
@@ -301,6 +362,7 @@ function statusCard(s, editorOpen) {
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
     row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('听写（语音转文字）', asrLine(s.asr)) +
+    (s.asr && !(s.asr.engine && s.asr.model) ? '<div style="margin-top:8px"><button data-ghost-action="install-asr" style="font:inherit;padding:5px 12px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">下载听写程序和模型…</button></div>' : '') +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -414,6 +476,8 @@ const HANDLERS = {
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
+  /* Transcription's engine and model: the user is asked in the host's confirm box first; a no downloads nothing. */
+  async montclip_install_asr() { return installAsr(); },
   /* Open (or focus) the editor as this task's own tab in the task's right sidebar. */
   async montclip_open_task_view(args, msg) {
     if (typeof cindy.taskView !== 'function') return { error: 'This Cindy has no task views; update Cindy.' };
@@ -430,6 +494,15 @@ cindy.onHostMessage(async function (msg) {
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
       html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
         (r && r.ok ? '剪辑器已在右侧栏打开。' : openEditorFailed(r && (r.message || r.errorCode), r && r.errorCode)) + '</div>' });
+    return;
+  }
+  // 下载听写程序和模型 on the status card: a real click; installAsr still asks in the host's confirm box first
+  if (msg.type === 'event' && msg.name === 'card-action' && msg.actionId === 'install-asr') {
+    const r = await installAsr();
+    const say = r.installed ? '听写程序和模型装好了，现在可以把说的话转成文字。' : r.declined ? '没有下载。' :
+      r.code === 'HOST_TOO_OLD' ? 'Cindy 版本太旧，没法先问你再下载。先把 Cindy 更新到最新。' : '这次没装上（' + esc(r.code || '') + '）。再点一次试试。';
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
+      html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' + say + '</div>' });
     return;
   }
   // 打开文件夹 on an export card: the worker opens it, and only the exports folder or the folder that export went into

@@ -122,6 +122,14 @@
       }
     },
     {
+      "name": "montclip_install_asr",
+      "description": "下载并安装本机听写要用的程序和中文模型（只在用户要听写、montclip_status 说还没装时用）。先弹 Cindy 的确认框给用户看来源、大小、许可，用户点「下载」才从 MontClip 在 github.com 的发布页下载；点「先不下」就什么都不下，不要换个说法再问。下载完逐个核对大小和 SHA-256，全部对上才装。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
       "name": "montclip_open_task_view",
       "description": "在这个任务的右侧栏打开（或切到）MontClip 剪辑器页签，跟聊天并排；用户说「打开剪辑器」「剪这段录像」时调用。每个任务对应自己的 MontClip 项目。不传 sessionId 就是聊天所在的这个任务。",
       "parameters": {
@@ -168,5 +176,6 @@
     "protocol": "json-rpc-stdio",
     "lifecycle": "on-demand",
     "idleTimeoutSeconds": 3600
-  }
+  },
+  "confirm": true
 }
