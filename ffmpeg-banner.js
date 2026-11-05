@@ -9,7 +9,7 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
   const REASONS = {
-    checksum: ["SHA256_MISMATCH", "BAD_ARCHIVE"],
+    checksum: ["SHA256_MISMATCH", "SIZE_MISMATCH", "BAD_ARCHIVE"],
     interrupted: ["DOWNLOAD_FAILED"],
     disk: ["ENOSPC", "EDQUOT"],
     permission: ["EACCES", "EPERM"],

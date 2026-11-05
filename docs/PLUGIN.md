@@ -45,8 +45,8 @@ The second shell around the one MontClip engine (the repository root). The first
 - **ffmpeg.** Only the pinned LGPL build of `desktop/ffmpeg-manifest.json` (the one the Windows app bundles), in
   `~/MontClip-Cindy/ffmpeg/<platform>-<arch>/`, never one from PATH. On first use the editor tab shows a banner
   (export and noise reduction need it, about 160 MB from GitHub); its button — or the chat's
-  `montclip_install_ffmpeg`, when the user agreed — downloads it with `cindy.downloads` (Cindy checks the SHA-256
-  and the exact size; progress shows in the banner), and the worker installs it with `desktop/fetch-ffmpeg.cjs`'s
+  `montclip_install_ffmpeg`, when the user agreed — downloads it with `cindy.downloads` (given the SHA-256
+  and the exact size; progress shows in the banner), and the worker measures both again (size first) and installs it with `desktop/fetch-ffmpeg.cjs`'s
   staged install and LGPL check (no `--enable-gpl` / `--enable-nonfree`, `-L` says LGPL). The engine then restarts
   to use it; the editor tab follows and keeps its undo history. `montclip_status` reports `downloaded`, `changed`
   (the files differ from what was installed) or `missing`. Windows x64 is offered; Linux x64 is offered once the

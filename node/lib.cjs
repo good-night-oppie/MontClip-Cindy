@@ -113,6 +113,10 @@ function ffmpegSpec(manifest, platform) {
  *  A GPL or non-free build, a wrong archive or a missing program throws and leaves `dest` as it was. */
 function installFfmpeg({ archive, spec, dest, win, tmpDir, sha256, extract, installTree, check, manifest }) {
   if (!archive || !fs.existsSync(archive)) throw Object.assign(new Error("no downloaded archive was handed over"), { code: "NO_ARCHIVE" });
+  // the exact size first, then the SHA-256: measured here, not taken on trust from cindy.downloads
+  if (!Number.isSafeInteger(spec.bytes) || spec.bytes <= 0) throw Object.assign(new Error("the pinned build has no byte count"), { code: "NO_PINNED_BYTES" });
+  const size = fs.statSync(archive).size;
+  if (size !== spec.bytes) throw Object.assign(new Error(`archive size mismatch: got ${size} bytes, pinned ${spec.bytes}`), { code: "SIZE_MISMATCH" });
   const got = sha256(archive);
   if (got !== spec.sha256) throw Object.assign(new Error(`archive SHA-256 mismatch: got ${got}, pinned ${spec.sha256}`), { code: "SHA256_MISMATCH" });
   const work = fs.mkdtempSync(path.join(tmpDir, "montclip-ffmpeg-"));
