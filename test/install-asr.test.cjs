@@ -130,7 +130,9 @@ test("the confirm box comes first and says where from, how big and under which l
   const body = h.asked[0].body;
   assert.ok(body.length <= 300, "the host keeps at most 300 characters: " + body.length);
   for (const s of ["github.com", "MB", "sherpa-onnx", "Apache-2.0", "MIT", "Paraformer", "silero"]) assert.ok(body.includes(s), s + " in: " + body);
-  assert.match(body, /约 2[45]0 MB/, "the size of what this system needs");
+  // the size of what this system needs, on the cards' one rule (DD on #7): MB of 1,000,000 bytes, to the nearest 10
+  const total = h.items.reduce((n, i) => n + i.bytes, 0);
+  assert.ok(body.includes("一共约 " + Math.round(total / 1e6 / 10) * 10 + " MB"), total + " bytes: " + body);
 });
 
 test("yes: each missing file is downloaded with its pinned url, sha256 and bytes, then handed to the worker", async () => {
