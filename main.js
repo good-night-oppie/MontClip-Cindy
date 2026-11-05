@@ -104,7 +104,10 @@ function installFfmpeg() {
    them in place all together or not at all. One install at a time. */
 let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
 const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
-/** The confirm box's words (drafts for JJ; the host keeps at most 300 characters). MB as JJ writes it: MiB to the nearest 10. */
+/** The confirm box's words (drafts for JJ; the host keeps at most 300 characters). JJ's four points: which site, how big
+ *  in all, under which licences, whether anything else is sent; and the way back after 〔先不用〕. MB as JJ writes it:
+ *  MiB to the nearest 10. */
+const ASR_AGAIN = '下载听写程序和模型';   // the button on the status card's 听写 line, named wherever the way back is told
 function asrConsentText(spec) {
   const mb = Math.max(10, Math.round(spec.bytes / 1048576 / 10) * 10);
   const model = spec.missing.some((i) => /paraformer/i.test(i.name)), engine = spec.missing.some((i) => /sherpa|silero/i.test(i.name));
@@ -113,10 +116,11 @@ function asrConsentText(spec) {
   if (spec.missing.some((i) => /sherpa/i.test(i.name))) lic.push('sherpa-onnx（Apache-2.0，内含 ONNX Runtime，MIT）');
   if (spec.missing.some((i) => /silero/i.test(i.name))) lic.push('silero VAD（MIT）');
   if (model) lic.push('Paraformer 中文模型（Apache-2.0）');
-  return '要把说的话转成文字，先要下载' + what + '，共约 ' + mb + ' MB，只下一次。\n' +
-    '来源：github.com 上 MontClip 的发布页（下载时可能会转到 GitHub 存文件的网站）。\n' +
+  return '要把说的话转成文字，先要下载' + what + '，一共约 ' + mb + ' MB，只下一次。\n' +
+    '从哪下载：github.com 上 MontClip 的发布页（下载时可能会转到 GitHub 存文件的网站）。\n' +
     '许可：' + lic.join('、') + '。\n' +
-    '只下载这些文件，不会发送你的录像、字幕或项目。下载完会逐个核对，对不上就不装。';
+    '下载时只取这些文件，不会顺带发出你的录像、字幕、项目或别的数据。下完逐个核对，对不上就不装。\n' +
+    '现在不用也行：以后在状态卡「听写（语音转文字）」那一行点〔' + ASR_AGAIN + '〕再下载。';
 }
 function installAsr() {
   if (asrInstalling) return asrInstalling;
@@ -126,9 +130,10 @@ function installAsr() {
     if (!spec.missing.length) return { installed: true, already: true };
     if (typeof cindy.confirm !== 'function' || typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
       return { error: 'This Cindy cannot ask before downloading, or cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
-    const asked = await cindy.confirm({ body: asrConsentText(spec), confirmText: '下载', cancelText: '先不下' });
+    const asked = await cindy.confirm({ body: asrConsentText(spec), confirmText: '下载', cancelText: '先不用' });
     if (!asked || !asked.ok) return { error: 'Could not ask the user (' + ((asked && asked.errorCode) || 'no answer') + '); nothing was downloaded.', code: 'NOT_ASKED' };
-    if (!asked.confirmed) return { declined: true, note: 'The user said no: nothing was downloaded. Do not ask again unless she asks for it.' };
+    if (!asked.confirmed) return { declined: true, note: 'The user chose 〔先不用〕: nothing was downloaded. Do not ask again unless she asks for it. ' +
+      'She can open the download again herself: the button 〔' + ASR_AGAIN + '〕 on the 「听写（语音转文字）」 line of the status card (montclip_status shows it), or by asking you to run montclip_install_asr.' };
     channel.postMessage({ type: 'asr-progress', phase: 'queued' });
     const tokens = {};
     for (let k = 0; k < spec.missing.length; k++) {
@@ -364,12 +369,14 @@ function asrLine(a, lang) {
   return a.engine ? t.model(Math.round((+a.modelBytes || 0) / 1048576 / 10) * 10) : t.engine;
 }
 function statusCard(s, editorOpen) {
-  const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
+  const row = (k, v, extra = '') => '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span>' + extra + '</div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('听写（语音转文字）', asrLine(s.asr)) +
-    (s.asr && !(s.asr.engine && s.asr.model) ? '<div style="margin-top:8px"><button data-ghost-action="install-asr" style="font:inherit;padding:5px 12px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">下载听写程序和模型…</button></div>' : '') +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
+    row('听写（语音转文字）', asrLine(s.asr), s.asr && !(s.asr.engine && s.asr.model)
+      ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_AGAIN) + '</button>' : '') +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -506,7 +513,7 @@ cindy.onHostMessage(async function (msg) {
   // 下载听写程序和模型 on the status card: a real click; installAsr still asks in the host's confirm box first
   if (msg.type === 'event' && msg.name === 'card-action' && msg.actionId === 'install-asr') {
     const r = await installAsr();
-    const say = r.installed ? '听写程序和模型装好了，现在可以把说的话转成文字。' : r.declined ? '没有下载。' :
+    const say = r.installed ? '听写程序和模型装好了，现在可以把说的话转成文字。' : r.declined ? '没有下载。以后要用，在状态卡「听写（语音转文字）」那一行点〔' + ASR_AGAIN + '〕。' :
       r.code === 'HOST_TOO_OLD' ? 'Cindy 版本太旧，没法先问你再下载。先把 Cindy 更新到最新。' : '这次没装上（' + esc(r.code || '') + '）。再点一次试试。';
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
       html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' + say + '</div>' });
