@@ -133,7 +133,7 @@ test("the confirm box comes first and says where from, how big and under which l
   for (const s of ["github.com", "MB", "sherpa-onnx", "Apache-2.0", "MIT", "Paraformer", "silero"]) assert.ok(body.includes(s), s + " in: " + body);
   // the size of what this system needs, on the cards' one rule (DD on #7): MB of 1,000,000 bytes, to the nearest 10
   const total = h.items.reduce((n, i) => n + i.bytes, 0);
-  assert.ok(body.includes("一共约 " + Math.round(total / 1e6 / 10) * 10 + " MB"), total + " bytes: " + body);
+  assert.ok(body.includes("共约 " + Math.round(total / 1e6 / 10) * 10 + " MB"), total + " bytes: " + body);
 });
 
 test("yes: each missing file is downloaded with its pinned url, sha256 and bytes, then handed to the worker", async () => {
@@ -155,32 +155,8 @@ test("a Cindy without the confirm box: nothing is fetched, and it says to update
   assert.equal(h.starts.length, 0);
 });
 
-/* JJ's four points for the confirm box (Deja, 2026-11-05): which site, how big in all, under which licences, and
-   whether anything else is sent while downloading. And a way back after 〔先不用〕: the box itself, the reply and the
-   card all say where to open the download again — the button on the status card's 「听写」 line. */
+/* The confirm box's and the card's words: JJ's final ones, in test/asr-consent.test.cjs. */
 const AGAIN = "下载听写程序和模型";
-test("the box says the site, the total size, the licences, and that nothing else is sent; 〔下载〕〔先不用〕", async () => {
-  const h = host({ answer: false });
-  await h.install();
-  const { body, confirmText, cancelText } = h.asked[0];
-  assert.equal(confirmText, "下载"); assert.equal(cancelText, "先不用");
-  assert.match(body, /github\.com/);
-  assert.match(body, /一共约 \d+ MB/);
-  assert.match(body, /许可/);
-  assert.match(body, /不会(顺带)?发出/);
-  assert.ok(body.includes("〔" + AGAIN + "〕") && body.includes("状态卡"), "where to open it again: " + body);
-  assert.ok(body.length <= 300, body.length);
-});
-
-test("after 〔先不用〕 the reply says where to open the download again, and asks for nothing", async () => {
-  const h = host({ answer: false });
-  const r = await h.install();
-  assert.equal(r.declined, true);
-  assert.ok(r.note.includes("〔" + AGAIN + "〕"), r.note);
-  assert.match(r.note, /montclip_install_asr/);
-  assert.match(r.note, /do not ask again/i);
-});
-
 test("the button sits on the status card's 「听写」 line while something is missing", () => {
   const ctx = {};
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
