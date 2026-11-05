@@ -1,9 +1,11 @@
 "use strict";
-/* The status card's 「听写（语音转文字）」 line: JJ's final words (2026-11-05, through Deja), word for word, in both
-   languages. The model's size is not written by hand: the worker reads it from the engine's
-   desktop/asr-manifest.json (the Paraformer files' bytes) and the card rounds it as JJ writes it. */
+/* The status card's 听写 line: JJ's final words (2026-11-05, through Deja), word for word, in both languages — the label
+   「听写」 with the hint 「把说的话转成文字」 on hover; 已装好 / 还没装模型（约 N MB）/ 还没装听写程序; and under the last
+   two a small line saying what it is for and that editing and exporting still work. N is never written by hand: the
+   worker reads the Paraformer files' bytes from the engine's desktop/asr-manifest.json and rounds them with the engine's
+   own aboutMb (asr-status.js, MontClip#165) — MB rounded to 10, 243,371,218 → 240. */
 const test = require("node:test"), assert = require("node:assert/strict");
-const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
+const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), os = require("node:os");
 const ROOT = path.join(__dirname, "..");
 const MAIN = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
 
@@ -14,49 +16,58 @@ function load() {
   vm.runInNewContext(MAIN, ctx);
   return ctx;
 }
-const modelBytes = () => {
-  const m = JSON.parse(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json"), "utf8")).models.asr;
-  return Object.values(m.files).reduce((n, f) => n + f.size, 0);
+const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json"), "utf8"));
+const JJ = {
+  zh: { label: "听写", hint: "把说的话转成文字", ready: "已装好", model: (n) => `还没装模型（约 ${n} MB）`, engine: "还没装听写程序",
+    note: "做字幕、按说过的话找位置时要用；剪辑和导出不受影响。" },
+  en: { label: "Transcription", hint: "Turns speech into text", ready: "Installed", model: (n) => `Model not installed (about ${n} MB)`,
+    engine: "Transcription program not installed", note: "Needed for captions and for finding a moment by what was said. Editing and exporting still work." },
 };
 
-test("JJ's three lines, Chinese and English, word for word", () => {
-  const { asrLine } = load();
-  const b = modelBytes();
-  assert.equal(Math.round(b / 1e6 / 10) * 10, 240, "MB of 1,000,000 bytes, to the nearest 10 (DD on #7)");
-  assert.equal(asrLine({ engine: true, model: true, modelBytes: b }), "已装好");
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: b }), "还没装听写模型（约 240 MB）");
-  assert.equal(asrLine({ engine: false, model: false, modelBytes: b }), "这台电脑上还没有听写程序");
-  assert.equal(asrLine({ engine: true, model: true, modelBytes: b }, "en"), "Installed");
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: b }, "en"), "Speech model not installed yet (about 240 MB)");
-  assert.equal(asrLine({ engine: false, model: false, modelBytes: b }, "en"), "No transcription program on this computer yet");
+test("JJ's words for the 听写 line, Chinese and English, word for word", () => {
+  const { asrLine, asrNote, ASR_CARD } = load();
+  for (const lang of ["zh", "en"]) {
+    const j = JJ[lang];
+    assert.equal(ASR_CARD[lang].label, j.label); assert.equal(ASR_CARD[lang].hint, j.hint);
+    assert.equal(asrLine({ engine: true, model: true, modelMb: 240 }, lang), j.ready);
+    assert.equal(asrLine({ engine: true, model: false, modelMb: 240 }, lang), j.model(240));
+    assert.equal(asrLine({ engine: false, model: false, modelMb: 240 }, lang), j.engine);
+    assert.equal(asrNote({ engine: true, model: false, modelMb: 240 }, lang), j.note);
+    assert.equal(asrNote({ engine: false, model: false, modelMb: 240 }, lang), j.note);
+    assert.equal(asrNote({ engine: true, model: true, modelMb: 240 }, lang), "", "no note once installed");
+  }
 });
 
-test("the size follows the manifest's bytes, never a number written in the card", () => {
-  const { asrLine } = load();
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: 300e6 }), "还没装听写模型（约 300 MB）");
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: 300e6 }, "en"), "Speech model not installed yet (about 300 MB)");
-  assert.doesNotMatch(MAIN, /约 2[34]0 MB|about 2[34]0 MB/, "no size written by hand in main.js");
+test("the card: label 「听写」 with its hint on hover, the note under the value while something is missing", () => {
+  const { statusCard } = load();
+  const html = statusCard({ ffmpeg: "downloaded", project: "p", asr: { engine: true, model: false, modelMb: 240 } }, true);
+  assert.ok(html.includes('title="把说的话转成文字"'), "the hint");
+  assert.ok(/>听写</.test(html), "the label");
+  assert.ok(!html.includes("听写（语音转文字）"), "the old label is gone");
+  assert.ok(html.includes("还没装模型（约 240 MB）") && html.includes(JJ.zh.note));
+  assert.ok(!statusCard({ ffmpeg: "downloaded", project: "p", asr: { engine: true, model: true, modelMb: 240 } }, true).includes(JJ.zh.note));
 });
 
-test("the worker reports the model's bytes from the engine's manifest", () => {
+test("the size: the manifest's bytes through the engine's aboutMb; a different manifest, a different number", () => {
+  const { asrModelMb, aboutMbFrom } = require("../node/lib.cjs");
+  const m = manifest();
+  const round = (b) => Math.round(b / 1e6 / 10) * 10;
+  const about = aboutMbFrom(path.join(ROOT, "engine"));
+  assert.equal(about(243371218), 240, "243,371,218 bytes → 240");
+  assert.equal(asrModelMb(m, about), 240);
+  const bigger = JSON.parse(JSON.stringify(m));
+  bigger.models.asr.files["model.int8.onnx"].size = 312000000;
+  assert.equal(asrModelMb(bigger, about), round(312000000 + m.models.asr.files["tokens.txt"].size), "follows the bytes");
+  assert.equal(asrModelMb({}, about), null, "no manifest, no number");
+  // the engine's own function when the engine has it (asr-status.js, MontClip#165)
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-about-"));
+  try {
+    fs.writeFileSync(path.join(app, "asr-status.js"), "module.exports = { aboutMb: (b) => 7 };");
+    assert.equal(aboutMbFrom(app)(243371218), 7, "the engine's aboutMb is the one used");
+  } finally { fs.rmSync(app, { recursive: true, force: true }); }
   const w = fs.readFileSync(path.join(ROOT, "node", "worker.cjs"), "utf8");
-  assert.match(w, /modelBytes/);
-  assert.match(w, /asr-manifest\.json/);
-});
-
-/* DD on #7 (review 5781528697): 「约 230 MB」 was wrong — the model is 243,371,218 bytes (+ tokens.txt 75,756), which
-   the card's rule writes as 「约 240 MB」: MB of 1,000,000 bytes, to the nearest 10. And the 听写 label, longer than
-   min-width 8.5em, pushed its value out of the column; at 280 px it wrapped to two lines and the button sat a few
-   pixels from the card's bottom. Every label now has one width (9.5em, not shrinking), and the card's height is
-   estimated from its rows, not written in. */
-test("the size is the manifest's bytes in MB of 1,000,000, to the nearest 10: 约 240 MB", () => {
-  const { asrLine, aboutMb } = load();
-  const b = modelBytes();
-  assert.equal(b, 243371218 + 75756, "the manifest's two Paraformer files");
-  assert.equal(aboutMb(b), Math.round(b / 1e6 / 10) * 10);
-  assert.equal(aboutMb(b), 240);
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: b }), "还没装听写模型（约 " + aboutMb(b) + " MB）");
-  assert.equal(asrLine({ engine: true, model: false, modelBytes: b }, "en"), "Speech model not installed yet (about " + aboutMb(b) + " MB)");
+  assert.match(w, /modelMb/); assert.match(w, /asr-manifest\.json/);
+  assert.doesNotMatch(MAIN, /1e6|1048576 \/ 10|约 2[34]0 MB|about 2[34]0 MB/, "main.js rounds nothing and writes no size");
 });
 
 test("the card's height is estimated from its rows, never one number for every card", () => {
@@ -64,6 +75,7 @@ test("the card's height is estimated from its rows, never one number for every c
   assert.equal(typeof statusCardHeight, "function");
   const open = statusCardHeight({ asr: null }, true), closed = statusCardHeight({ asr: null }, false);
   assert.ok(closed > open, "the open-editor button makes it taller");
+  assert.ok(statusCardHeight({ asr: { engine: false, model: false, modelMb: 240 } }, true) > statusCardHeight({ asr: { engine: true, model: true, modelMb: 240 } }, true), "the note makes it taller");
   assert.doesNotMatch(MAIN, /height: open \? \d+ : \d+/, "no fixed heights left");
 });
 
@@ -75,11 +87,11 @@ function findBrowser() {
 }
 const BROWSER = findBrowser();
 test("at 280 px and 360 px every value starts in one column, and the button keeps clear of the card's bottom", { skip: !BROWSER && "no Chrome / Edge here" }, (t) => {
-  const os = require("node:os"), { execFileSync } = require("node:child_process");
-  const ctx = load(), b = modelBytes();
+  const { execFileSync } = require("node:child_process");
+  const ctx = load();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-card-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
-  const cases = [["nothing installed", { engine: false, model: false, modelBytes: b }], ["no model", { engine: true, model: false, modelBytes: b }], ["not known", null]];
+  const cases = [["nothing installed", { engine: false, model: false, modelMb: 240 }], ["no model", { engine: true, model: false, modelMb: 240 }], ["installed", { engine: true, model: true, modelMb: 240 }], ["not known", null]];
   for (const width of [280, 360]) for (const [what, asr] of cases) {
     const s = { ffmpeg: "missing", project: "演示任务的项目", asr };
     const card = ctx.statusCard(s, false);

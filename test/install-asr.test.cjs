@@ -104,7 +104,8 @@ function host({ answer = true, confirm = true, missing } = {}) {
     node: {
       async request(r) {
         if (r.method === "montclip/asr-spec")
-          return { ok: true, result: { supported: true, platform: "linux-x64", release: rt.release, missing: items.map((i) => ({ ...i, url: rt.base + i.name })), bytes: items.reduce((n, i) => n + i.bytes, 0) } };
+          return { ok: true, result: { supported: true, platform: "linux-x64", release: rt.release, missing: items.map((i) => ({ ...i, url: rt.base + i.name })),
+            bytes: items.reduce((n, i) => n + i.bytes, 0), mb: require("../node/lib.cjs").aboutMbFrom(path.join(ROOT, "engine"))(items.reduce((n, i) => n + i.bytes, 0)) } };
         if (r.method === "montclip/asr-install") { installs.push(r); return { ok: true, result: { installed: r.params.names } }; }
         return { ok: false, errorCode: "NO", message: r.method };
       },
@@ -156,7 +157,7 @@ test("a Cindy without the confirm box: nothing is fetched, and it says to update
 
 /* JJ's four points for the confirm box (Deja, 2026-11-05): which site, how big in all, under which licences, and
    whether anything else is sent while downloading. And a way back after 〔先不用〕: the box itself, the reply and the
-   card all say where to open the download again — the button on the status card's 「听写（语音转文字）」 line. */
+   card all say where to open the download again — the button on the status card's 「听写」 line. */
 const AGAIN = "下载听写程序和模型";
 test("the box says the site, the total size, the licences, and that nothing else is sent; 〔下载〕〔先不用〕", async () => {
   const h = host({ answer: false });
@@ -180,13 +181,13 @@ test("after 〔先不用〕 the reply says where to open the download again, and
   assert.match(r.note, /do not ask again/i);
 });
 
-test("the button sits on the status card's 「听写（语音转文字）」 line while something is missing", () => {
+test("the button sits on the status card's 「听写」 line while something is missing", () => {
   const ctx = {};
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
   vm.runInNewContext(MAIN, Object.assign(ctx, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL }));
   const card = (asr) => ctx.statusCard({ ffmpeg: "downloaded", project: "p", asr }, true);
-  const line = (html) => html.split('<div style="display:flex').find((d) => d.includes("听写（语音转文字）")) || "";
+  const line = (html) => html.split('<div style="display:flex').find((d) => /title="把说的话转成文字">听写</.test(d)) || "";
   const missing = line(card({ engine: false, model: false, modelBytes: 243446974 }));
   assert.ok(missing.includes('data-ghost-action="install-asr"') && missing.includes(AGAIN), missing);
   assert.ok(!card({ engine: true, model: true, modelBytes: 1 }).includes('data-ghost-action="install-asr"'), "no button once installed");

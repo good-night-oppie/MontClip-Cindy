@@ -105,10 +105,11 @@ function installFfmpeg() {
 let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
 const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
 /** The confirm box's words (drafts for JJ; the host keeps at most 300 characters). JJ's four points: which site, how big
- *  in all, under which licences, whether anything else is sent; and the way back after 〔先不用〕. The size through aboutMb. */
+ *  in all, under which licences, whether anything else is sent; and the way back after 〔先不用〕. The size is the
+ *  worker's spec.mb (the engine's aboutMb). */
 const ASR_AGAIN = '下载听写程序和模型';   // the button on the status card's 听写 line, named wherever the way back is told
 function asrConsentText(spec) {
-  const mb = Math.max(10, aboutMb(spec.bytes));   // the cards' one rule (DD on #7)
+  const mb = Math.max(10, +spec.mb || 0);   // the worker's: the engine's own aboutMb (JJ: MB rounded to 10)
   const model = spec.missing.some((i) => /paraformer/i.test(i.name)), engine = spec.missing.some((i) => /sherpa|silero/i.test(i.name));
   const what = engine && model ? '听写程序和中文听写模型' : model ? '中文听写模型' : '听写程序';
   const lic = [];
@@ -119,7 +120,7 @@ function asrConsentText(spec) {
     '从哪下载：github.com 上 MontClip 的发布页（下载时可能会转到 GitHub 存文件的网站）。\n' +
     '许可：' + lic.join('、') + '。\n' +
     '下载时只取这些文件，不会顺带发出你的录像、字幕、项目或别的数据。下完逐个核对，对不上就不装。\n' +
-    '现在不用也行：以后在状态卡「听写（语音转文字）」那一行点〔' + ASR_AGAIN + '〕再下载。';
+    '现在不用也行：以后在状态卡「听写」那一行点〔' + ASR_AGAIN + '〕再下载。';
 }
 function installAsr() {
   if (asrInstalling) return asrInstalling;
@@ -132,7 +133,7 @@ function installAsr() {
     const asked = await cindy.confirm({ body: asrConsentText(spec), confirmText: '下载', cancelText: '先不用' });
     if (!asked || !asked.ok) return { error: 'Could not ask the user (' + ((asked && asked.errorCode) || 'no answer') + '); nothing was downloaded.', code: 'NOT_ASKED' };
     if (!asked.confirmed) return { declined: true, note: 'The user chose 〔先不用〕: nothing was downloaded. Do not ask again unless she asks for it. ' +
-      'She can open the download again herself: the button 〔' + ASR_AGAIN + '〕 on the 「听写（语音转文字）」 line of the status card (montclip_status shows it), or by asking you to run montclip_install_asr.' };
+      'She can open the download again herself: the button 〔' + ASR_AGAIN + '〕 on the 「听写」 line of the status card (montclip_status shows it), or by asking you to run montclip_install_asr.' };
     channel.postMessage({ type: 'asr-progress', phase: 'queued' });
     const tokens = {};
     for (let k = 0; k < spec.missing.length; k++) {
@@ -354,46 +355,55 @@ function openEditorFailed(error, code) {
   logProblem(code || 'TASK_VIEW_FAILED', error);
   return '没能打开剪辑器。再点一次试试。';
 }
-/* 听写 on the status card: installed, or what is missing (JJ's final words, 2026-11-05, P8). The plugin's pages are
-   Chinese for now; the English is kept for when they follow the interface language. The model's size comes from the
-   engine's desktop/asr-manifest.json (the worker's modelBytes), through aboutMb. */
-/** A download's size as the cards say it (DD on #7): MB of 1,000,000 bytes, to the nearest 10 — 243,446,974 → 240. */
-function aboutMb(bytes) { return Math.round((+bytes || 0) / 1e6 / 10) * 10; }
-const ASR_CARD = {
-  zh: { ready: '已装好', model: (mb) => '还没装听写模型（约 ' + mb + ' MB）', engine: '这台电脑上还没有听写程序' },
-  en: { ready: 'Installed', model: (mb) => 'Speech model not installed yet (about ' + mb + ' MB)', engine: 'No transcription program on this computer yet' },
+/* 听写 on the status card (JJ's final words, 2026-11-05): the label and its hover hint, the state, and under an
+   unfinished state a small line on what it is for. The plugin's pages are Chinese for now; the English is kept for when
+   they follow the interface language. The model's size is the worker's modelMb: the manifest's bytes through the
+   engine's own aboutMb (asr-status.js), so nothing here rounds or writes a size. */
+var ASR_CARD = {   // var: the tests read it from main.js's own scope
+  zh: { label: '听写', hint: '把说的话转成文字', ready: '已装好', model: (mb) => '还没装模型（约 ' + mb + ' MB）', engine: '还没装听写程序',
+    note: '做字幕、按说过的话找位置时要用；剪辑和导出不受影响。' },
+  en: { label: 'Transcription', hint: 'Turns speech into text', ready: 'Installed', model: (mb) => 'Model not installed (about ' + mb + ' MB)',
+    engine: 'Transcription program not installed', note: 'Needed for captions and for finding a moment by what was said. Editing and exporting still work.' },
 };
+const asrText = (lang) => ASR_CARD[lang === 'en' ? 'en' : 'zh'];
 function asrLine(a, lang) {
-  const t = ASR_CARD[lang === 'en' ? 'en' : 'zh'];
+  const t = asrText(lang);
   if (!a) return '—';
   if (a.engine && a.model) return t.ready;
-  return a.engine ? t.model(aboutMb(a.modelBytes)) : t.engine;
+  return a.engine ? t.model(a.modelMb) : t.engine;
 }
+/** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
+function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
 /** The status card's values, in order (the card and its height estimate read the same list). */
 function statusRows(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
 }
+const NOTE_STYLE = 'font-size:12px;line-height:1.45;color:var(--text-secondary,#6b6b66);margin-top:2px';
 /** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
  *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
 function statusCardHeight(s, editorOpen) {
   const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
+  const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
   const asrButton = s.asr && !(s.asr.engine && s.asr.model) ? 52 : 0;
-  return Math.min(900, Math.max(120, 24 + 26 + rows + asrButton + (editorOpen ? 0 : 42) + 6));
+  return Math.min(900, Math.max(120, 24 + 26 + rows + note + asrButton + (editorOpen ? 0 : 42) + 6));
 }
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
-  // the column, and wrapped at 280 px), so the values form one column; a button on a line sits under its value, in that column
-  const row = (k, v, extra = '') => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap">' + esc(k) + '</span><span>' + esc(v) + (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
+  // the column, and wrapped at 280 px), so the values form one column; a line's small note and its button sit under its
+  // value, in that column
+  const row = (k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
+    (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
     row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
-    row('听写（语音转文字）', asrLine(s.asr), s.asr && !(s.asr.engine && s.asr.model)
-      ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_AGAIN) + '</button>' : '') +
+    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: s.asr && !(s.asr.engine && s.asr.model)
+      ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_AGAIN) + '</button>' : '' }) +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -530,7 +540,7 @@ cindy.onHostMessage(async function (msg) {
   // 下载听写程序和模型 on the status card: a real click; installAsr still asks in the host's confirm box first
   if (msg.type === 'event' && msg.name === 'card-action' && msg.actionId === 'install-asr') {
     const r = await installAsr();
-    const say = r.installed ? '听写程序和模型装好了，现在可以把说的话转成文字。' : r.declined ? '没有下载。以后要用，在状态卡「听写（语音转文字）」那一行点〔' + ASR_AGAIN + '〕。' :
+    const say = r.installed ? '听写程序和模型装好了，现在可以把说的话转成文字。' : r.declined ? '没有下载。以后要用，在状态卡「听写」那一行点〔' + ASR_AGAIN + '〕。' :
       r.code === 'HOST_TOO_OLD' ? 'Cindy 版本太旧，没法先问你再下载。先把 Cindy 更新到最新。' : '这次没装上（' + esc(r.code || '') + '）。再点一次试试。';
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
       html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' + say + '</div>' });
