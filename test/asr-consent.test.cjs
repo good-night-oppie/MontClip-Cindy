@@ -26,7 +26,7 @@ const JJ = {
       `从哪下：GitHub 上 MontClip 的发布页（github.com，下载时会转到 ${host}）。\n` +
       "只下载这些文件，不会发出你的录像、字幕或项目。下载完会逐个核对，对不上就不装。\n" +
       "许可：sherpa-onnx（Apache-2.0，内含 ONNX Runtime，MIT）、silero VAD（MIT）、Paraformer 中文模型（Apache-2.0）。",
-    yes: (n) => `下载（约 ${n} MB）`, no: "先不下",
+    yes: "下载", no: "先不下",   // JJ, option A: no size on the button, only in the first line
     button: "下载听写程序和模型…",
     installed: "听写程序和模型装好了，现在可以把说的话转成文字。",
     declined: "没有下载。以后要用，再点〔下载听写程序和模型…〕就行。",
@@ -41,7 +41,7 @@ const JJ = {
       `From: github.com, via ${host}.\n` +
       "Your videos, captions and projects are never sent. Files are checked first.\n" +
       "Licences: sherpa-onnx, ONNX Runtime, silero VAD, Paraformer (Apache-2.0/MIT).",
-    yes: (n) => `Download (about ${n} MB)`, no: "Not now",
+    yes: "Download", no: "Not now",
     button: "Download transcription program and model…",
     installed: "The transcription program and model are installed. You can now turn speech into text.",
     declined: "Nothing was downloaded. To use it later, click “Download transcription program and model…”.",
@@ -81,7 +81,7 @@ test("the confirm box: JJ's words with everything missing, Chinese and English; 
     for (const lang of ["zh", "en"]) {
       const c = asrConsent(s, lang);
       assert.equal(c.body, JJ[lang].body(n, HOST), `${platform} ${lang}`);
-      assert.equal(c.confirmText, JJ[lang].yes(n)); assert.equal(c.cancelText, JJ[lang].no);
+      assert.equal(c.confirmText, JJ[lang].yes); assert.equal(c.cancelText, JJ[lang].no);
     }
   }
   assert.equal(about(bytesOf(itemsFor("linux-x64"))), 260); assert.equal(about(bytesOf(itemsFor("win32-x64"))), 250);
@@ -95,18 +95,20 @@ test("the host's 300 characters: both boxes fit with everything missing, and wit
   }
 });
 
-test("the host's 12 characters for a button: the Chinese buttons fit", () => {
+test("the host's 12 characters for a button: both buttons fit, Chinese and English, whatever N is", () => {
   const { asrConsent } = load();
-  for (const platform of ["linux-x64", "win32-x64"]) {
-    const c = asrConsent(spec(platform), "zh");
-    assert.ok(chars(c.confirmText) <= 12 && chars(c.cancelText) <= 12, `${platform}: ${c.confirmText} / ${c.cancelText}`);
+  for (const platform of ["linux-x64", "win32-x64"]) for (const lang of ["zh", "en"]) for (const mb of [about(bytesOf(itemsFor(platform))), 9999]) {
+    const c = asrConsent(spec(platform, itemsFor(platform), mb), lang);
+    assert.ok(chars(c.confirmText) <= 12 && chars(c.cancelText) <= 12, `${platform} ${lang} N=${mb}: ${c.confirmText} / ${c.cancelText}`);
+    assert.ok(!c.confirmText.includes(String(mb)), "no size on the button: " + c.confirmText);
   }
 });
 
-test("the host's 12 characters for the English 〔Download (about N MB)〕 (the plugin's pages are Chinese for now)", { todo: "23 characters: JJ to shorten the English button — MontClip-Cindy#8" }, () => {
-  const { asrConsent } = load();
-  const c = asrConsent(spec("linux-x64"), "en");
-  assert.ok(chars(c.confirmText) <= 12, `${chars(c.confirmText)} characters: ${c.confirmText}`);
+test("the buttons' names come from their keys wherever they are named: never written again by hand", () => {
+  // each name is written once, where the key is set: 先不下, 下载 as a button name, and the status card's button
+  for (const name of ["'先不下'", "'下载'", "'下载听写程序和模型…'", "'Not now'", "'Download'"])
+    assert.equal(MAIN.split(name).length - 1, 1, name + " is written once, in ASR_TEXT");
+  assert.doesNotMatch(MAIN, /〔下载〕|〔先不下〕|〔下载听写程序和模型…〕/, "no button name copied into a sentence");
 });
 
 test("the status card's words after its button, and the button's own name from the same key", () => {
