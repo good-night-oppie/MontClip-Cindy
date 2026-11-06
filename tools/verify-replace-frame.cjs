@@ -73,9 +73,16 @@ async function probeUI(mediaId,clipId,sourceTimes,timelineTimes){const m=getMedi
   receipt.samples=[];let inFlight=false;const polling=setInterval(async()=>{if(inFlight)return;inFlight=true;try{receipt.samples.push({at:Date.now(),...await snapshot()});}catch(e){receipt.samples.push({error:String(e)});}finally{inFlight=false;}},1000);
   const startedAt=Date.now();receipt.withWatchDisabled=await frame({time:5,where:'tab'});receipt.withWatchDisabledMs=Date.now()-startedAt;clearInterval(polling);
   receipt.afterTimeout=await snapshot();await ev('syncFromServer(true)');receipt.afterExplicitSync=await snapshot();
-  // Wait only for cancellation cleanup, never extend the fablecut_frame deadline.
-  await new Promise(r=>setTimeout(r,1000));const positiveAt=Date.now();receipt.afterSyncFrame=await frame({time:5,where:'tab'});receipt.afterSyncFrameMs=Date.now()-positiveAt;
-  receipt.browserDiagnostic=await ev('frameDiagnostic');receipt.cases=[{stage:'watch-disabled-revision-delay',before:receipt.beforeFrame,result:receipt.withWatchDisabled},{stage:'explicit-sync-control',before:receipt.afterExplicitSync,result:receipt.afterSyncFrame}];
+  receipt.browserDiagnostic=await ev('frameDiagnostic');
+  // A deliberately timed-out render may still unwind. Use a new page context for
+  // the positive control, rather than racing that cancelled render or extending its deadline.
+  if(!watchEnabled){
+   const prior=await ev('performance.timeOrigin');await send('Page.reload');let reopened=false;
+   for(let i=0;i<150;i++){try{reopened=await ev('performance.timeOrigin!=='+prior+' && state.connected && !!project && project.revision>='+receipt.afterExplicitSync.disk);if(reopened)break;}catch{}await new Promise(r=>setTimeout(r,100));}
+   assert.ok(reopened,'positive control must reopen the saved replacement revision');
+  }
+  const positiveAt=Date.now();receipt.afterSyncFrame=await frame({time:5,where:'tab'});receipt.afterSyncFrameMs=Date.now()-positiveAt;
+  receipt.cases=[{stage:'watch-disabled-revision-delay',before:receipt.beforeFrame,result:receipt.withWatchDisabled},{stage:'saved-revision-control',before:receipt.afterExplicitSync,result:receipt.afterSyncFrame}];
   receipt.watchEnabled=watchEnabled;
   const assertFrame=(result)=>{assert.ok(!result.error,result.error);assert.match(result.text,/Timeline at 5s/);assert.match(result.text,/black 0%/);assert.match(result.text,/colour cast: red/);};
   if(watchEnabled){assertFrame(receipt.withWatchDisabled);}
