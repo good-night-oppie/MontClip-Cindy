@@ -1,12 +1,7 @@
-/* What a streamer may copy and send us when something goes wrong (JJ v2, 2026-11-04, section 1, rule 2).
-   The Cindy plugin's own copy of the engine's problem-details.js (#132): its pages are served from the plugin folder
-   and cannot load the engine's file. test/cindy-problem.test.js keeps the two alike once both are there.
-
-   The page never shows a raw error or a code: it says what happened and what she can do (app.js showProblem). The
-   〔复制问题信息〕 button copies copyLine(): the time, the code and the raw error, scrubbed — a path is cut to its file
-   name (the folders may carry her user name), and keys and tokens are removed. The console uses the same scrubbed detail.
-   Viewer names and uids do not occur in the errors this is used for. Pure; browser global MontClipProblem, and a
-   CommonJS module for the tests. */
+/* Plugin diagnostics: copied reports and console messages contain only a timestamp,
+   an explicitly allowed code, and fixed text. Raw error strings and arbitrary metadata
+   are never read by these output functions. The legacy scrub helper remains exported
+   for compatibility; it is not the privacy boundary for logs or copied reports. */
 (function (root) {
   "use strict";
   const REMOVED = "[removed]";
@@ -27,15 +22,27 @@
     return s;
   }
   const stamp = (at) => (at instanceof Date ? at : new Date()).toISOString();
-  /** The console uses the same redaction as copied diagnostics. */
+  // Only identifiers owned by this plugin are diagnostic metadata. Format checks
+  // alone would allow arbitrary uppercase secrets to masquerade as error codes.
+  const CODES = new Set([
+    "UNKNOWN", "FAILED", "NODE_REQUEST_FAILED", "CANDIDATE_FAILED",
+    "DATA_DIR_IN_USE", "TASK_REQUIRED", "INSTALL_BUSY", "INSTALL_FAILED",
+    "FFMPEG_REFRESH_FAILED", "FFMPEG_TOO_OLD", "FFMPEG_MISSING",
+    "UNSUPPORTED_PLATFORM", "HOST_TOO_OLD", "DOWNLOAD_FAILED", "CANCELLED",
+    "SIZE_MISMATCH", "SHA256_MISMATCH", "BAD_ARCHIVE", "ENOSPC", "EACCES",
+    "EPERM", "ENOENT", "NO_EDITOR", "NO_JOB", "NO_FILE", "NOT_DONE",
+    "EXPORT_REFUSED", "EXPORT_TASK_MISMATCH", "EXPORT_PROJECT_CHANGED",
+    "ASR_ENGINE_MISSING", "ASR_MODEL_MISSING", "ASR_CANCELLED",
+    "CHILD_EXIT_UNCONFIRMED", "TOOL_NOT_FOUND", "PROTOCOL_ERROR"
+  ]);
+  /** Logs and copied diagnostics contain time and a controlled code, never raw detail. */
   function logLine(problem, at) {
     const p = problem || {};
-    return `[MontClip] ${stamp(at)} ${/^[A-Z0-9_-]{1,64}$/.test(p.code || "") ? p.code : "UNKNOWN"}: Operation failed.`;
+    return `[MontClip] ${stamp(at)} ${typeof p.code === "string" && CODES.has(p.code) ? p.code : "UNKNOWN"}: Operation failed.`;
   }
-  /** The line the button copies: the same line, scrubbed. */
+  /** Copy the same fixed metadata as the log; do not inspect arbitrary error text. */
   function copyLine(problem, at) {
-    const p = problem || {};
-    return `[MontClip] ${stamp(at)} ${p.code || "UNKNOWN"}: ${scrub(p.error)}`;
+    return logLine(problem, at);
   }
   const api = { scrub, logLine, copyLine };
   if (typeof module === "object" && module.exports) module.exports = api;
