@@ -1,3 +1,5 @@
+最新文案增量见 [trial.11](docs/TRIAL11-SEQUENCE-LIMIT.md)，原 trial.10 包及资源证据保留。
+
 上一候选见 [trial.9 产品集成](docs/TRIAL9-PRODUCT-INTEGRATION.md)：#154→#172→#175→#176最小修复已集成，待本次增量审查。trial.8原包与覆盖记录保留为历史；已装候选保持 Disabled。
 
 最新资源补丁候选见 [trial.10 移植与验证](docs/TRIAL10-RESOURCE-INTEGRATION.md)。修正源CI已通过，候选已接入；QQ当前增量和JJ新增提示仍待，未安装/启用。
@@ -14,7 +16,7 @@ QQ已完成trial.9增量核验：仅测试电脑独立试用，AI抠像选“先
 
 # MontClip 独立候选试用
 
-本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.10`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
+本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.11`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
 
 已安装候选的升级及真实宿主复验见 [trial.3交接](docs/TRIAL3-HOST-COMPATIBILITY.md)。`trial.2`曾在真实宿主启动失败，新包待DD复验，不称已可用。
 
