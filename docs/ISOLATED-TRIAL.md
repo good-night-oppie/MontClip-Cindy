@@ -4,7 +4,7 @@
 
 ## 身份与宿主证据
 
-- id `montclip-candidate`，显示名「MontClip 候选试用」，命令「候选剪辑」，版本 `0.5.1-trial.2`，minCindyVersion `0.1.126`。
+- id `montclip-candidate`，显示名「MontClip 候选试用」，命令「候选剪辑」，版本 `0.5.1-trial.3`，minCindyVersion `0.1.126`。
 - 本机只读宿主查询为0.1.127。Europa dpkg及实际运行资源为0.1.126，`/usr/lib/cindy/resources/cindy-source.json` 声明 `a87d49a1a3bf1de408cfe44362f0fc78f1495deb`。官方仓该commit查询404，官方v0.1.126标签指向另一个commit `5ab30ec856e57e2ae8944657e9e2d69264c672f5`，不拿标签代替实际构建源码。
 - 只读核验Europa实际app.asar：主bundle SHA256 `07378332965fe9b18a210aeb4f53d6ee9da54c1452420f0e1e050c44112bc919`；Node worker SHA256 `4a82a7b84f075721e9b1ccfd10341420ba701bf99863ccfc5af25a2884eb034f`。核实id正则、local身份安装、taskView按实例/session路由、session_context由宿主注入、node子入口契约。
 - 目标宿主由DD报告为Cindy0.1.126。正式UI选择原包→inspect给出packageSha256→install校验expectedPackageSha256；不直接调用内部IPC。同namespace/id重复导入拒绝，install_copy不是任意克隆入口。未发现单实例DATA注入公开配置，候选自行设置路径。
@@ -46,8 +46,8 @@ Windows插件43通过/0失败；引擎组合141项：140通过/0失败/1环境�
 
 ## DD安装与Video人工入口（此任务不执行）
 
-1. DD先确认旧montclip实例/项目保留、候选id仍不存在、数据根没有别名或旧数据；核验共享原包SHA256。
-2. 经Europa Cindy插件界面导入该**新原包**。检查显示「MontClip 候选试用」、id montclip-candidate、版本0.5.1-trial.2、新childSpawn权限。若提示更新montclip或任何现用实例，停止。不要使用install_copy假设数据已隔离；不要重打包后仍称原包。
+1. 候选已安装且Disabled，不再按首次安装处理。按TRIAL3-HOST-COMPATIBILITY.md从候选详情Update from file升级；核验原包SHA256，保留旧montclip与候选项目。
+2. 经Europa Cindy插件界面导入该**新原包**。检查显示「MontClip 候选试用」、id montclip-candidate、版本0.5.1-trial.3、新childSpawn权限。若提示更新montclip或任何现用实例，停止。不要使用install_copy假设数据已隔离；不要重打包后仍称原包。
 3. 记录安装回执真实instanceId与namespace，再按该身份查询详情并调用工具，不能只按裸id猜实例。此步骤尚未执行，当前没有可声称的已安装candidate instanceId。
 4. 在专用Cindy验收任务中通过候选实例调用 `montclip_candidate_open_task_view`，打开标题「MontClip 候选试用」。再调用 `montclip_candidate_status`，核对pluginId/version/SOURCE、该任务session和dataDir；页面角标也显示候选版本/session。不是裸localhost。工具目录仍为list_tools/call_tool，底层fablecut_*工具名保持原样。
 5. NO_EDITOR表示当前任务没有打开页面，先打开候选任务页；不把它记成撤销坏。任务页之外没有session的通用侧栏会提示进入任务，不冒用别的项目。

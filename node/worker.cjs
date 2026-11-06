@@ -3,8 +3,9 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),readline=require('node:readline'),{spawn}=require('node:child_process');
 const {resolveRoot,safeTree,exportDestination}=require('./trial-paths.cjs');
 const manifest=require('../ghost.json');
+const {createChannel}=require('./child-channel.cjs');
 const APP=path.resolve(process.env.MONTCLIP_CINDY_APP||path.join(__dirname,'app'));
-let root,lock,initError,leaving=false;const children=new Map(),starting=new Map();
+let root,lock,initError,leaving=false;const children=new Map(),starting=new Map(),owned=new Set();
 const reply=m=>process.stdout.write(JSON.stringify(m)+'\n');
 function init(){if(initError)throw initError;if(root)return;try{
  const r=resolveRoot();safeTree(r);fs.mkdirSync(r,{recursive:true,mode:0o700});
@@ -23,17 +24,13 @@ async function engine(session){init();safeTree(root);const key=taskKey(session);
  const settings=JSON.stringify({data:dir,tools:path.join(dir,'runtime'),tmp,cache:path.join(dir,'cache'),config:path.join(dir,'config'),home:path.join(dir,'home')});
  if(globalThis.__CINDY_NODE__&&!globalThis.__CINDY_NODE__.spawnEntry)throw Error('HOST_CAPABILITY_MISSING: candidate needs spawnEntry');
  const child=globalThis.__CINDY_NODE__?.spawnEntry ? await globalThis.__CINDY_NODE__.spawnEntry('node/engine-worker.cjs',['--candidate-paths',settings]) : spawn(process.execPath,[path.join(__dirname,'engine-worker.cjs'),'--candidate-paths',settings],{env,stdio:['pipe','pipe','pipe'],windowsHide:true});
- let buf='',id=0;const pending=new Map();const exited=new Promise(resolve=>child.once('exit',resolve));
- child.stderr.on('data',b=>process.stderr.write(b));
- const entry={child,dir,session,tmp,exited,alive:true,request:(method,params)=>new Promise((resolve,reject)=>{
-  if(!entry.alive||entry.draining)return reject(Error('candidate engine is closing'));
-  const n=++id,timer=setTimeout(()=>{pending.delete(n);reject(Error('candidate engine timeout'));},120000);
-  pending.set(n,{resolve,reject,timer});child.stdin.write(JSON.stringify({jsonrpc:'2.0',id:n,method,params})+'\n');
- })};
- const fail=e=>{if(children.get(key)===entry)children.delete(key);for(const p of pending.values()){clearTimeout(p.timer);p.reject(e);}pending.clear();};
- child.stdin.on('error',e=>{fail(e);child.kill();});child.once('error',fail);child.once('exit',()=>{entry.alive=false;fail(Error('candidate engine stopped'));});
- child.stdout.on('data',b=>{buf+=b;let n;while((n=buf.indexOf('\n'))>=0){let m;try{m=JSON.parse(buf.slice(0,n));}catch{fail(Error("invalid child protocol"));child.kill();return;}buf=buf.slice(n+1);const p=pending.get(m.id);if(!p)continue;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Object.assign(Error(m.error.message),{code:m.error.data?.code})):p.resolve(m.result);}});
- children.set(key,entry);return entry;})();starting.set(key,creating);try{return await creating;}finally{starting.delete(key);}
+ let channel;channel=createChannel(child,{host:!!globalThis.__CINDY_NODE__,onExit:()=>{owned.delete(channel);if(channel&&children.get(key)?.channel===channel)children.delete(key);}});
+ if(channel.alive)owned.add(channel);
+ const entry={child,dir,session,tmp,channel,request:channel.request};
+ try{await channel.ready;}catch(error){if(channel.alive)children.set(key,entry);throw error;}
+ if(!channel.alive)throw Error('candidate engine stopped during initialization');
+ children.set(key,entry);
+ return entry;})();starting.set(key,creating);try{return await creating;}finally{starting.delete(key);}
 }
 async function dispatch(method,params={}){
  if(leaving)throw Error('candidate is stopping');init();
@@ -45,10 +42,10 @@ async function dispatch(method,params={}){
   return {projects,exports,dataDir:root};
  }
  if(params.dir)exportDestination(params.dir,{root,ownDir:path.join(root,'tasks',taskKey(session))});
- const e=await engine(session);if(leaving)throw Error('candidate is stopping');const result=await e.request(method,params);
+ const e=await engine(session);if(leaving)throw Error('candidate is stopping');let result;try{result=await e.request(method,params);}catch(error){if(method==='montclip/start')await e.channel.close();throw error;}
  if(method==='montclip/start')return {...result,source:fs.existsSync(path.join(__dirname,'../SOURCE.json'))?JSON.parse(fs.readFileSync(path.join(__dirname,'../SOURCE.json'))):null,pluginId:manifest.id,version:manifest.version,root,session,enginePid:e.child.pid};
  return result;
 }
-async function stop(){if(leaving)return;leaving=true;await Promise.allSettled([...starting.values()]);const owned=[...children.values()];for(const x of owned){x.draining=true;x.child.stdin.end();}const hard=setTimeout(()=>{for(const x of owned)if(x.alive)x.child.kill();},6000);await Promise.all(owned.map(x=>x.exited));clearTimeout(hard);lock?.release();process.exit(0);}
+async function stop(){if(leaving)return;leaving=true;await Promise.allSettled([...starting.values()]);const results=await Promise.allSettled([...owned].map(x=>x.close()));const failure=results.find(x=>x.status==='rejected');if(failure){process.stderr.write('CHILD_EXIT_UNCONFIRMED: '+failure.reason.message+'\\n');process.exit(1);return;}lock?.release();process.exit(0);}
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,stop);
 readline.createInterface({input:process.stdin}).on('close',stop).on('line',async line=>{let r;try{r=JSON.parse(line);if(r.id==null)return;const result=await dispatch(r.method,r.params);reply({jsonrpc:'2.0',id:r.id,result});}catch(e){reply({jsonrpc:'2.0',id:r?.id??null,error:{code:-32000,message:String(e.message),data:{code:e.code||'CANDIDATE_FAILED'}}});}});
