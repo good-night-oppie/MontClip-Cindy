@@ -6,6 +6,14 @@
 const test = require("node:test"), assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const MAIN = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
+test('editor banner reads only its task tool installation state',async()=>{
+ let channel;const calls=[];
+ class BroadcastChannel{constructor(){channel=this;}postMessage(){}}
+ const cindy={onHostMessage(){},send:async()=>({ok:true}),node:{request:async r=>{calls.push(r);return{ok:true,result:{state:'downloaded'}};}}};
+ vm.runInNewContext(MAIN,{cindy,BroadcastChannel,console,setTimeout,clearTimeout,setInterval,clearInterval,URL});
+ await channel.onmessage({data:{reqId:'state-a',type:'ffmpeg-state',session:'task-a'}});
+ assert.equal(calls[0].method,'montclip/ffmpeg-spec');assert.equal(calls[0].params.session,'task-a');
+});
 
 function host({ firstFails }) {
   const messages=[]; const starts = [], files = new Map();   // download id → the file the host keeps for it (a cache that never changes)

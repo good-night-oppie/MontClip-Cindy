@@ -1,8 +1,10 @@
 # MontClip 独立候选试用
 
-本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.3`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
+本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.4`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
 
 已安装候选的升级及真实宿主复验见 [trial.3交接](docs/TRIAL3-HOST-COMPATIBILITY.md)。`trial.2`曾在真实宿主启动失败，新包待DD复验，不称已可用。
+
+最新锁与工具验收见 [trial.4交接](docs/TRIAL4-LOCK-AND-FFMPEG.md)。trial.3真实宿主ready已通过，仍保留后续验收限制。
 
 以下为正式插件迁移背景，不代表本试用身份：
 

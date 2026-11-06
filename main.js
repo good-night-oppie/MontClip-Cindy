@@ -616,7 +616,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start', {session:m.session}); a = { origin:s.origin, url:s.url, pluginId:s.pluginId, version:s.version, session:s.session }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
-    else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
+    else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec', {session:m.session||null});
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)
     else if (m.type === 'open-task') a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: String(m.session || ''), focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
