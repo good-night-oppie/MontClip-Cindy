@@ -23,6 +23,7 @@ const APP = path.resolve(process.env.MONTCLIP_CINDY_APP || path.join(__dirname, 
 // the plugin's work lives in the user's home, never inside the plugin (an update replaces the plugin folder)
 const DATA = path.resolve(process.env.MONTCLIP_CINDY_DATA || path.join(os.homedir(), "MontClip-Cindy"));
 const FOLDERS_FILE = path.join(DATA, "cindy-export-folders.json");   // which folder each export went into (打开文件夹)
+const endedNoted = new Set();   // export jobs whose end without a file is already in the log
 const PLATFORM = `${process.platform}-${process.arch}`;
 const FFMPEG_DIR = path.join(DATA, "ffmpeg", PLATFORM);
 // the Windows app's own pinned-build manifest and installer (build.cjs copies them in)
@@ -161,7 +162,7 @@ const METHODS = {
     }
     note({ event: "ffmpeg-installed", version: out.version });
     const restarting = !!started;
-    if (restarting) setTimeout(() => process.exit(0), 300);
+    if (restarting) setTimeout(stopEngine, 300);
     return { ...out, state: ffmpegState(), restarting };
   },
   /* Export (main.js montclip_export): start a job in the engine (the open editor tab, else headless), report it, and
@@ -181,6 +182,18 @@ const METHODS = {
   async "montclip/export-job"(p) {
     await start();
     const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(p.id || "")));
+    if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || "no such export job"), { code: "NO_JOB" });
+    // why an export ended without its file goes to Cindy's log once (P11: the reason was nowhere to be found afterwards)
+    if ((r.body.status === "failed" || r.body.status === "cancelled") && !endedNoted.has(r.body.id)) {
+      endedNoted.add(r.body.id);
+      note({ event: "export-" + r.body.status, id: r.body.id, via: r.body.via, progress: r.body.progress,
+        error: String(r.body.error || "").split(os.homedir()).join("~").slice(0, 300) });
+    }
+    return r.body;
+  },
+  async "montclip/export-cancel"(p) {
+    await start();
+    const r = await api("POST", "/api/export/job/cancel?id=" + encodeURIComponent(String(p.id || "")));
     if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || "no such export job"), { code: "NO_JOB" });
     return r.body;
   },
@@ -259,7 +272,19 @@ function dispatch(method, params) {
   return result;
 }
 
-readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+/* Leaving (Cindy closed our stdin, or ffmpeg was just installed): the engine's own shutdown runs first — it stops the
+   ffmpeg each running export spawned (stdin closed, then killed by its handle) and deletes the half-finished files,
+   then exits within ~4 s (server.js shutdown). P11: an export's ffmpeg must never outlive the worker. */
+let leaving = false;
+function stopEngine() {
+  if (leaving) return;
+  leaving = true;
+  note({ event: "worker-stopping", engine: !!started });
+  if (started) process.emit("SIGTERM");   // server.js listens: shutdown() → stopSessions → process.exit
+  else process.exit(0);
+}
+
+readline.createInterface({ input: process.stdin }).on("close", stopEngine).on("line", async (line) => {
   let req;
   try { req = JSON.parse(line); } catch { reply({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }); return; }
   if (req.id === undefined || req.id === null) return;   // a notification: nothing to answer
