@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 function refuse(message){throw Object.assign(Error('ROOT_CONFLICT: '+message),{code:'ROOT_CONFLICT'});}
 function noLinks(target){
  let p=path.resolve(target);
- for(;;){if(fs.existsSync(p)&&fs.lstatSync(p).isSymbolicLink())refuse('linked path is not a trial directory');const up=path.dirname(p);if(up===p)break;p=up;}
+ for(;;){let stat;try{stat=fs.lstatSync(p);}catch(e){if(e.code!=='ENOENT')throw e;}if(stat?.isSymbolicLink())refuse('linked path is not a trial directory');const up=path.dirname(p);if(up===p)break;p=up;}
  return path.resolve(target);
 }
 function inside(a,b){const rel=path.relative(a,b);return rel===''||(!rel.startsWith('..'+path.sep)&&rel!=='..'&&!path.isAbsolute(rel));}
@@ -17,7 +17,13 @@ function resolveRoot({home=os.homedir(),env=process.env}={}){
  }
  return root;
 }
-function safeTree(root){noLinks(root);if(!fs.existsSync(root))return;for(const e of fs.readdirSync(root,{withFileTypes:true})){const p=path.join(root,e.name);if(e.isSymbolicLink())refuse('linked candidate contents');if(e.isDirectory())safeTree(p);}}
+function safeTree(root){
+ noLinks(root);let entries;
+ // Chromium removes its own temporary directories concurrently with task RPCs.
+ // A vanished entry is safe to skip; permission errors and links must still fail.
+ try{entries=fs.readdirSync(root,{withFileTypes:true});}catch(e){if(e.code==='ENOENT')return;throw e;}
+ for(const e of entries){const p=path.join(root,e.name);if(e.isSymbolicLink())refuse('linked candidate contents');if(e.isDirectory())safeTree(p);}
+}
 function exportDestination(target,{root,ownDir,home=os.homedir(),env=process.env}){
  const dest=noLinks(target);for(const old of [path.join(home,'MontClip-Cindy'),path.join(home,'MontClip'),path.join(home,'FableCut'),env.MONTCLIP_CINDY_DATA].filter(Boolean))if(inside(path.resolve(old),dest)||inside(dest,path.resolve(old)))refuse('export destination overlaps legacy data');
  if(inside(root,dest)&&!inside(ownDir,dest))refuse('export destination belongs to another candidate task');
