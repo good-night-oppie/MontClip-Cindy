@@ -40,3 +40,22 @@ test("host throws: returned error does not become focus acknowledgement",async()
  assert.equal(V.taskOpenResult(h.sent.at(-1),"task-A").state,"failed");assert.equal(h.nodes.length,0);
 });
 
+
+// JJ final, relayed by Deja; bound to e77c9706. Exact bilingual copy, not a GUI proof.
+const finalCopy={
+  "overview.focus-requested": {
+    "zh": "已请求切换到这个任务。请在 Cindy 里查看 MontClip 剪辑器，等时间线出现后再继续。",
+    "en": "A switch to this task was requested. Check the MontClip editor in Cindy and wait for the timeline before continuing."
+  },
+  "overview.focus-unconfirmed": {
+    "zh": "Cindy 没有确认切换到这个任务，可能已经切换，也可能没有。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器；也可以检查 Cindy 是否有更新。",
+    "en": "Cindy did not confirm a switch to this task. It may or may not have switched. Open the matching task from the task list, then ask the AI to open the MontClip editor. You can also check for Cindy updates."
+  },
+  "overview.open-failed": {
+    "zh": "这次打开任务剪辑器的请求没有成功，页面可能没有切换。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器。",
+    "en": "The request to open the task editor did not succeed, so the page may not have switched. Open the matching task from the task list, then ask the AI to open the MontClip editor."
+  }
+};
+for(const [key,pair] of Object.entries(finalCopy)) test('JJ final '+key,()=>{
+ for(const lang of ['zh','en']) assert.equal(V.OPEN_TASK_COPY[key][lang],pair[lang]);
+});
