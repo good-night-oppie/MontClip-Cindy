@@ -1,5 +1,7 @@
 # Integration candidate — 2026-11-05
 
+当前独立 trial.8 的冻结包、上游 #172/#175/#176/#154 覆盖及严格依赖顺序见 [产品覆盖与 Video 剩余验收](TRIAL8-PRODUCT-COVERAGE.md)。下文是 preview.7 历史证据，不代表 trial.8 已包含后续上游产品功能，也不代表当前实装/审批状态。
+
 Status: **Draft / pending review and installation acceptance**. No installation, restart, publication or merge performed. This is a review snapshot, not a recommendation to replace Europa preview.4.
 
 ## Reproducible sources
