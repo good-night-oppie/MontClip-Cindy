@@ -1,4 +1,6 @@
-# DD：trial.8 正式 UI 升级清单（SOP v2）
+# 历史 trial.8 升级步骤（SOP v2）
+
+> **历史 trial.8 步骤，仅供后续新包复用；当前暂不升级 trial.8。** trial.8 缺少 #154/#172/#175/#176，不是当前推荐升级包。四项修复已进入 **trial.9**，见 [新包集成及验证](TRIAL9-PRODUCT-INTEGRATION.md) 和 [PR13 当前原包交接](https://github.com/good-night-oppie/MontClip-Cindy/pull/13)。下面的 trial.8 路径、hash 和当时状态仅为历史记录，不得直接用于下一次安装。trial.9 也仍需受影响审查及相应安装/启用授权。
 
 **准备完成，尚未获正式安装/启用授权。本清单不执行这些动作。** 当前已装候选 trial.3 保持 Disabled，Video 保留已导入工程与录像，暂停在加入时间线之前。QQ 对 trial.8 的 COMMENTED 增量安全复核已完成，允许独立测试机试用的技术范围，不等于安装或替换授权。
 
