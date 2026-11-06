@@ -86,7 +86,7 @@
     },
     {
       "name": "montclip_export",
-      "description": "把这个任务的剪辑导出成文件，并存到用户在系统对话框里选的文件夹（不覆盖同名文件）；聊天里的卡片显示导出进度。range 不传时：设了 IN/OUT 就导出那一段，否则整条时间线。preset 是交付预设（youtube、instagram-reels、master…，见 call_tool fablecut_encode_profiles）。folder:\"default\" 时不弹对话框，留在 MontClip 数据目录的 exports 里。需要先装 ffmpeg（montclip_status）。",
+      "description": "把这个任务的剪辑导出成文件，并存到用户在系统对话框里选的文件夹（不覆盖同名文件）。导出在后台做：开始后立刻返回任务号 job 和进度，聊天里的卡片一直显示进度；之后用 montclip_export {job} 查（立刻返回），status 为 done 时文件才算导好并存进了文件夹；导好了但没能存进文件夹时 status 为 failed（phase copyFailed、copied:false）；插件中途重载过、确认不了是否存进文件夹时 status 为 exported（文件在 exports 里，不算已存进文件夹）；{cancel:job} 停掉。导出还没做完时再调一次，返回的是同一个任务，不会再开一个。range 不传时：设了 IN/OUT 就导出那一段，否则整条时间线。preset 是交付预设（youtube、instagram-reels、master…，见 call_tool fablecut_encode_profiles）。folder:\"default\" 时不弹对话框，留在 MontClip 数据目录的 exports 里。需要先装 ffmpeg（montclip_status）。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -109,6 +109,14 @@
               "default"
             ],
             "description": "ask（缺省）= 让用户选文件夹；default = 留在 MontClip 的 exports 里"
+          },
+          "job": {
+            "type": "string",
+            "description": "查这个导出任务的状态（开始导出时返回的 job），立刻返回"
+          },
+          "cancel": {
+            "type": "string",
+            "description": "停掉这个导出任务"
           }
         }
       }
