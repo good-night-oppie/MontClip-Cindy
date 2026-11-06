@@ -27,7 +27,7 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 }
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
-for (const f of ["worker.cjs", "engine-worker.cjs", "child-channel.cjs", "trial-paths.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
+for (const f of ["worker.cjs", "engine-worker.cjs", "child-channel.cjs", "safe-log.cjs", "trial-paths.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
 fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({
   plugin: { repository: "https://github.com/good-night-oppie/MontClip-Cindy.git",
     commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: __dirname, encoding: "utf8" }).trim(),
@@ -72,3 +72,10 @@ const EMBED = path.join(__dirname, "embed");
 if (fs.existsSync(EMBED)) for (const f of fs.readdirSync(EMBED)) copy(path.join(EMBED, f), path.join(OUT, "cindy", f));
 for (const d of ["media", "exports"]) fs.mkdirSync(path.join(OUT, d), { recursive: true });
 console.log(`dist/montclip/node/app: ${files} files, ${(bytes / 1e6).toFixed(1)} MB from ${ROOT}`);
+
+// Notices for the bundled agent UI; source/build tools are not runtime files.
+for (const f of ["upstream/LICENSE", "upstream/NOTICE", "cindy-43001ea/LICENSE", "cindy-43001ea/NOTICE", "THIRD-PARTY-NOTICES.txt", "BUNDLED-LICENSES.json", "BUNDLED-PACKAGES.json", "SOURCES.json"]) {
+ const rel="agent-ui/"+f; if (!tracked.has(rel)) throw new Error("Untracked license: "+rel);
+ copy(path.join(ROOT,rel),path.join(OUT,rel));
+}
+walk("agent-ui/licenses");
