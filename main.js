@@ -362,12 +362,13 @@ async function runFollow(f, job) {
   await sleep(1000);
   sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
 }
-/** What montclip_export says about a follower: done only once the file is in its folder. */
+/** What montclip_export says about a follower: done only once the file is in its folder. A copy into the folder that
+ *  failed is failed (phase copyFailed, copied:false): the engine finished the file, but it is not where the user asked. */
 function exportView(f) {
-  const status = f.phase === 'copyFailed' ? 'done' : ENDED.includes(f.phase) ? f.phase : 'running';
+  const status = f.phase === 'copyFailed' ? 'failed' : ENDED.includes(f.phase) ? f.phase : 'running';
   const o = { job: f.id, status, progress: Math.round(f.progress * 100) / 100, phase: f.phase };
   if (f.phase === 'done') return Object.assign(o, { files: (f.files || []).map((x) => String(x.name || x.file || '').split(/[\/]/).pop()), report: f.report || [] });
-  if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false } : {}, plainFailure(f.failure));
+  if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false, engineStatus: 'done' } : {}, plainFailure(f.failure));
   if (f.phase === 'cancelled') return o;
   return Object.assign(o, { hint: 'The export runs in the background and its card shows the progress. Check it with montclip_export {job:"' + f.id +
     '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
@@ -427,9 +428,12 @@ const HANDLERS = {
     if (args.job != null) {
       const id = String(args.job), f = exportFollows.get(id);
       if (f) return exportView(f);
-      // not followed here (the plugin was reloaded): what the engine knows; a file it finished stays in exports/
+      // not followed here (the plugin was reloaded): what the engine knows; a file it finished stays in exports/. Whether
+      // it was also copied into a folder the user picked is not known here, so a finished job is "exported", never "done"
       const job = await node('montclip/export-job', { id });
       const o = { job: id, status: job.status === 'pending' ? 'running' : job.status, progress: job.progress || 0, phase: job.status };
+      if (job.status === 'done') Object.assign(o, { status: 'exported', copied: null, engineStatus: 'done',
+        hint: 'The file is finished in the MontClip data folder\'s exports/. MontClip was reloaded while it was exporting, so whether it was also saved into the folder the user picked is not known: ask the user to look in that folder; if it is not there, it is in exports/, or export again.' });
       if (job.status === 'failed') { logProblem(job.code || 'EXPORT_FAILED', job.error); Object.assign(o, plainFailure({ phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error })); }
       return o;
     }

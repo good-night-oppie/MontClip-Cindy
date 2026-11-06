@@ -10,7 +10,7 @@ const MAIN = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
 function host() {
   const calls = [], cards = [];
   const job = { id: "x_job1", status: "pending", progress: 0 };
-  let deliver = null;   // the copy into the chosen folder, held until the test lets it finish
+  let deliver = null, failDeliver = null;   // the copy into the chosen folder, held until the test lets it finish or fail
   let listener = null;
   const cindy = {
     onHostMessage: (fn) => { listener = fn; },
@@ -27,7 +27,10 @@ function host() {
           case "montclip/export-start": return ok({ id: job.id, status: "pending", progress: 0, via: "headless" });
           case "montclip/export-job": return ok({ ...job });
           case "montclip/export-cancel": job.status = "cancelled"; return ok({ ...job });
-          case "montclip/export-deliver": return new Promise((resolve) => { deliver = () => resolve(ok({ files: [{ name: "demo.mp4", bytes: 10 }] })); });
+          case "montclip/export-deliver": return new Promise((resolve) => {
+            deliver = () => resolve(ok({ files: [{ name: "demo.mp4", bytes: 10 }] }));
+            failDeliver = () => resolve({ ok: false, errorCode: "ENOSPC", message: "no space left on device" });
+          });
           default: return { ok: false, errorCode: "NO", message: r.method };
         }
       },
@@ -52,7 +55,7 @@ function host() {
     for (let i = 0; i < 400; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 2)); }
     assert.fail("timed out waiting for " + what);
   };
-  return { job, calls, cards, call, until, deliver: () => deliver && deliver(), delivering: () => !!deliver };
+  return { job, calls, cards, call, until, deliver: () => deliver && deliver(), failDeliver: () => failDeliver && failDeliver(), delivering: () => !!deliver };
 }
 const methods = (h, m) => h.calls.filter((c) => c.method === m);
 
@@ -131,4 +134,38 @@ test("call_tool fablecut_export answers at once (wait:false); a {job} check pass
   await h.call("call_tool", { name: "fablecut_export", args: { job: "x_9" } });
   const sent = methods(h, "montclip/call").map((c) => JSON.stringify(c.params.arguments));
   assert.deepEqual(sent, [JSON.stringify({ preset: "youtube", wait: false }), JSON.stringify({ job: "x_9" })]);
+});
+
+// QQ's review of f3312d9f (MontClip-Cindy#9): a finished export that could not be copied into the folder is not done
+test("the engine finished but the copy into the folder failed: failed (copyFailed, copied:false), never done", { timeout: 10000 }, async (t) => {
+  const h = host();
+  t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
+  h.job.status = "running"; h.job.progress = 0.99;
+  await h.call("montclip_export", {});
+  Object.assign(h.job, { status: "done", progress: 1, src: "/exports/demo.mp4", result: { outputs: [{ file: "demo.mp4", ok: true, report: { line: "ok" } }] } });
+  await h.until(() => h.delivering(), "the copy to start");
+  h.failDeliver();
+  await h.until(() => h.cards.some((c) => c.state === "done" && c.callId === "c1" && !/导出完成/.test(c.html)), "the copy-failed card");
+  const s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  assert.notEqual(s.status, "done");
+  assert.equal(s.status, "failed");
+  assert.equal(s.phase, "copyFailed");
+  assert.equal(s.copied, false);
+  assert.equal(s.engineStatus, "done");
+  assert.equal(s.files, undefined, "no file list that reads like it was saved");
+});
+
+test("after a plugin reload (no follower) a job the engine finished is exported, never done: the copy is not known", { timeout: 10000 }, async () => {
+  const h = host();
+  Object.assign(h.job, { status: "done", progress: 1 });
+  const s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  assert.notEqual(s.status, "done");
+  assert.equal(s.status, "exported");
+  assert.equal(s.copied, null);
+  assert.equal(s.engineStatus, "done");
+  assert.match(s.hint, /exports\//);
+  assert.match(s.hint, /not known/);
+  // still running and failed jobs read as before
+  Object.assign(h.job, { status: "pending", progress: 0.2 });
+  assert.equal((await h.call("montclip_export", { job: "x_job1" })).result.status, "running");
 });
