@@ -111,3 +111,41 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
     assert.ok(est >= m.height - 4, `${width} px, ${what}: estimated ${est} px for a card ${Math.round(m.height)} px tall`);
   }
 });
+
+// QQ (review of c97f275b): when desktop/asr-manifest.json cannot be read the worker's modelMb stays null, and the card
+// read 「还没装模型（约 null MB）」; and a 听写 state the worker could not get showed a bare 「—」. JJ's words (2026-11-06):
+// no size, no brackets — its own sentence, the {N} one untouched; a state not known says so.
+const JJ_NO_SIZE = { zh: "还没装模型", en: "Model not installed" };
+const JJ_UNKNOWN = { zh: "现在查不到", en: "Can't check right now" };
+test("no manifest, no size: 「还没装模型」 / \"Model not installed\", its own sentence; with a size the {N} one", () => {
+  const { asrLine, ASR_CARD } = load();
+  for (const lang of ["zh", "en"]) {
+    assert.equal(ASR_CARD[lang].modelNoSize, JJ_NO_SIZE[lang], lang);
+    assert.equal(ASR_CARD[lang].model(240), JJ[lang].model(240), lang + ": the {N} sentence is unchanged");
+    assert.equal(asrLine({ engine: true, model: false, modelMb: 240 }, lang), JJ[lang].model(240), lang + " with N");
+    for (const mb of [null, undefined, NaN, "240", Infinity])
+      assert.equal(asrLine({ engine: true, model: false, modelMb: mb }, lang), JJ_NO_SIZE[lang], lang + " without N: " + String(mb));
+  }
+});
+
+test("a 听写 state that could not be read: 「现在查不到」 / \"Can't check right now\", never a bare dash", () => {
+  const { asrLine, asrNote, ASR_CARD, statusCard } = load();
+  for (const lang of ["zh", "en"]) {
+    assert.equal(ASR_CARD[lang].unknown, JJ_UNKNOWN[lang], lang);
+    assert.equal(asrLine(null, lang), JJ_UNKNOWN[lang], lang);
+    assert.equal(asrLine(undefined, lang), JJ_UNKNOWN[lang], lang);
+    assert.equal(asrNote(null, lang), "", lang + ": no note when the state is not known");
+  }
+  assert.ok(statusCard({ ffmpeg: "downloaded", project: "p", asr: null }, true).includes(JJ_UNKNOWN.zh), "the card shows it");
+});
+
+test("no state of the 听写 line, in either language, ever shows null / undefined / NaN", () => {
+  const { asrLine, statusCard } = load();
+  const states = [null, undefined];
+  for (const engine of [true, false]) for (const model of [true, false]) for (const modelMb of [240, null, undefined, NaN])
+    states.push({ engine, model, modelMb });
+  for (const a of states) {
+    for (const lang of ["zh", "en"]) assert.doesNotMatch(asrLine(a, lang), /null|undefined|NaN/, lang + " " + JSON.stringify(a));
+    assert.doesNotMatch(statusCard({ ffmpeg: "downloaded", project: "p", asr: a }, true), /null|undefined|NaN/, "card " + JSON.stringify(a));
+  }
+});
