@@ -43,10 +43,10 @@
     }
     $("linesEmpty").hidden = list.length > 0;
     now = -1;
-    follow();
+    syncContext(); follow();
   }
   function follow() {
-    const i = editor ? M.currentIndex(list, editor.time) : -1;
+    const i = editor && !editor.compOpen ? M.currentIndex(list, editor.time) : -1;
     if (i === now) return;
     const items = $("lines").children;
     if (items[now]) items[now].classList.remove("now");
@@ -57,7 +57,7 @@
     }
   }
   function renderProps() {
-    const f = editor && editor.selId ? M.clipFacts(project, editor.selId) : null;
+    const f = editor && !editor.compOpen && editor.selId ? M.clipFacts(project, editor.selId) : null;
     const dl = $("props");
     dl.textContent = "";
     $("propsEmpty").hidden = !!f;
@@ -83,10 +83,21 @@
       dl.append(dt, dd);
     }
   }
+  function syncContext() {
+    const blocked = !!(editor && editor.compOpen);
+    $("contextNote").hidden = !blocked;
+    for (const li of $("lines").children) if (li.children[0]) li.children[0].disabled = blocked;
+  }
   function seek(t) {
+    if (editor && editor.compOpen) { syncContext(); return; }
     if (ch && Date.now() - editorSeen < 3000) { ch.postMessage({ type: "seek", t }); return; }
     fetch("/api/ui/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd: "seek", t }) })
-      .then((r) => { $("offline").hidden = r.ok; }).catch(() => { $("offline").hidden = false; });
+      .then(async (r) => {
+        const result = await r.json().catch(() => ({}));
+        if (result.code === "TIMELINE_CONTEXT") {
+          editor = { ...editor, compOpen: true }; syncContext(); follow(); renderProps(); $("offline").hidden = true;
+        } else $("offline").hidden = r.ok && result.ok !== false;
+      }).catch(() => { $("offline").hidden = false; });
   }
 
   async function load() {
@@ -100,8 +111,9 @@
   if (ch) ch.onmessage = (e) => {
     const m = e.data || {};
     if (m.type !== "editor-state") return;
-    const selChanged = !editor || editor.selId !== m.selId, revChanged = !!editor && editor.revision !== m.revision;
+    const selChanged = !editor || editor.selId !== m.selId || !!editor.compOpen !== !!m.compOpen, revChanged = !!editor && editor.revision !== m.revision;
     editor = m; editorSeen = Date.now();
+    syncContext();
     $("offline").hidden = true;
     if (revChanged) load(); else { follow(); if (selChanged) renderProps(); }
   };

@@ -89,7 +89,7 @@
     trimStart: ["路径起点", "Path start"], trimEnd: ["路径终点", "Path end"], trimOffset: ["路径偏移", "Path offset"], pathOffset: ["沿路径位置", "Position along path"],
   };
   function propName(key, lang = "zh-CN") {
-    if (CHANNEL_NAMES[key]) return CHANNEL_NAMES[key][zh(lang) ? 0 : 1];
+    if (Object.hasOwn(CHANNEL_NAMES, key)) return CHANNEL_NAMES[key][zh(lang) ? 0 : 1];
     const p = PROPS.find((x) => x.key === key || (x.from && x.from.includes(key)));
     return p ? (zh(lang) ? p.zh : p.en) : (zh(lang) ? "其他属性" : "Other property");
   }
