@@ -15,7 +15,7 @@ const RULES = {
   versions: 'fablecut_versions {action:"list"} lists checkpoints; {action:"save", name} makes one before a big edit; {action:"restore", version} goes back to one — what was there is saved as a version first. Restore only when the user asked.',
   audio: 'These change clip gain / keyframes / cuts in the open project; each is one undo step in the editor.',
   speech: 'Transcription runs on this computer (the speech engine and the Paraformer zh model, after a VAD); the open editor tab or a headless one only relays it. Clips of a long recording are listened to in their windows only; mediaIds (or find over a whole replay) listens to all of it, minutes for hours. montclip_status says whether the engine and the model are installed here; when they are not, fablecut_transcribe says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING) — tell the user plainly, never fetch them yourself. Captions are text clips timed to the words.',
-  export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_status says whether it is installed.',
+  export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_status says whether it is installed. It answers at once with a job; check it with fablecut_export {job} until it is done (the file is finished only then), stop it with {cancel}. To save into a folder the user picks, use montclip_export instead (same job / cancel).',
 };
 const categoryOf = (name) => Object.keys(CATEGORIES).find((c) => CATEGORIES[c].includes(name)) || 'other';
 
@@ -132,7 +132,8 @@ const EXPORT_TEXT = {
       editor: '这次导出要剪辑器开着才能做，它没开或者还没准备好。打开右侧栏的「MontClip 剪辑器」，等时间线出来，再点〔重试〕。原片没有改动。',
       busy: '上一次导出还没做完，要等它做完才能开始这一个。把 MontClip 剪辑器切到前面，过半分钟再点〔重试〕。',
       noAnswer: 'MontClip 一直没有回应，这次没有做完。关掉剪辑器再打开，再点〔重试〕。原片没有改动。',
-      stopped: '导出到一半停下了，这次没有做完。原片没有改动。再点〔重试〕。',
+      // P11 draft, 待 JJ 定稿 (2026-11-05): an export that stopped partway says so, and that exporting again is fine
+      stopped: '导出到一半停了，这次没导完。原片没有改动，可以再导一次：点〔重试〕。',
       projectChanged: '这个任务的项目在等你选文件夹时被换走了，再导一次。',
       other: '这次没有做完，出了个我们没预料到的问题。原片没有改动。再点〔重试〕；还不行，点〔复制问题信息〕发给我们。',
     },
@@ -161,7 +162,7 @@ const EXPORT_TEXT = {
       editor: 'This export needs the editor open, and it isn\'t open or isn\'t ready yet. Open "MontClip editor" in the right sidebar, wait for the timeline, then click Retry. The original is unchanged.',
       busy: 'The last export hasn\'t finished, so this one can\'t start until it does. Bring the MontClip editor to the front and click Retry in half a minute.',
       noAnswer: 'MontClip didn\'t answer, so this didn\'t finish. Close the editor, open it again, then click Retry. The original is unchanged.',
-      stopped: 'The export stopped halfway, so it didn\'t finish. The original is unchanged. Click Retry.',
+      stopped: 'The export stopped partway and didn\'t finish. The original is unchanged; you can export again: click Retry.',   // P11 draft, waiting for JJ
       projectChanged: 'The project changed while you were choosing a folder. Export again.',
       other: 'This didn\'t finish because of a problem we didn\'t expect. The original is unchanged. Click Retry; if it still fails, use "Copy problem details" and send it to us.',
     },
@@ -208,6 +209,9 @@ function failedReason(c) {
   const code = String(c.code || ''), m = String(c.reason || '');
   if (code === 'EXPORT_PROJECT_CHANGED') return 'projectChanged';
   if (/^ffmpeg(Missing|Dev)$|^FFMPEG_MISSING$/i.test(code) || /ffmpeg (is )?(not found|missing)/i.test(m)) return 'tool';
+  // a renderer that went away mid-export (its tab closed, the headless browser exited or crashed) stopped halfway; this is
+  // asked before the editor reasons, whose words would wrongly say the editor was never open
+  if (c.stage === 'job' && /stopped reporting progress|exited before the export finished|crashed/i.test(m)) return 'stopped';
   if (/^(EDITOR_NOT_READY|EDITOR_DID_NOT_ACCEPT|HEADLESS_DISABLED)$/.test(code) ||
     /no editor tab|never picked up|did not accept|headless browser|Chrome \/ Edge/i.test(m)) return 'editor';
   if (/is still (pending|running)/i.test(m)) return 'busy';
@@ -336,41 +340,74 @@ function statusCard(s, editorOpen) {
     '</div>';
 }
 
-async function finishExport(job, { callId, folder, dir, again }) {
-    const t0 = Date.now();
-    while ((job.status === 'pending' || job.status === 'running') && Date.now() - t0 < 14 * 60000) {
-      await sleep(1500);
-      job = await node('montclip/export-job', { id: job.id });
-      sendCard(callId, { phase: 'running', progress: job.progress, folder });
+/* Exports run in the background (JJ's P2 rule, MontClip-Cindy#3): Cindy gives a plugin tool call at most 330 s
+   (`ghost tool call timed out … totalMs: 330001` in europa's log, 2026-11-05) and an export of a long edit takes longer.
+   So montclip_export answers at once with the job, and the same tool reports it ({job}) or stops it ({cancel}).
+   A follower here polls the engine, keeps the call's card up to date (a 'working' card stays open across calls), and
+   once the engine has finished the file — renamed from .part into place; the engine's job is not done before that —
+   copies it into the chosen folder. Only then is the export done. */
+const ENDED = ['done', 'failed', 'cancelled', 'copyFailed'];
+const exportFollows = new Map();   // job id → follower
+const NODE_MISSES = 20;            // the engine not answering for ~30 s in a row
+function followExport(job, ctx) {
+  const f = { id: job.id, session: ctx.session || null, callId: ctx.callId, folder: ctx.folder || null, dir: ctx.dir || null,
+    again: ctx.again || null, phase: 'running', progress: job.progress || 0, files: null, report: null, failure: null };
+  exportFollows.set(f.id, f);
+  while (exportFollows.size > 50) exportFollows.delete(exportFollows.keys().next().value);
+  f.finished = runFollow(f, job).catch((e) => {
+    logProblem(e.code, e.message);
+    f.phase = 'failed'; f.failure = { phase: 'failed', stage: 'job', code: e.code, reason: e.message, again: f.again };
+    sendCard(f.callId, f.failure);
+  });
+  return f;
+}
+async function runFollow(f, job) {
+  let misses = 0;
+  while (job.status === 'pending' || job.status === 'running') {
+    await sleep(1500);
+    try { job = await node('montclip/export-job', { id: f.id }); misses = 0; }
+    catch (e) {
+      // the engine has forgotten the job (it restarted): the export is gone with it
+      if (e.code === 'NO_JOB' || ++misses >= NODE_MISSES) throw Object.assign(new Error(e.message), { code: e.code === 'NO_JOB' ? 'NO_JOB' : 'NODE_REQUEST_FAILED' });
+      continue;
     }
-    if (job.status !== 'done') {
-      await sleep(1000);
-      // still going when this call can wait no longer: the card says so in plain words; how to follow it is for the agent
-      if (job.status === 'pending' || job.status === 'running') {
-        sendCard(callId, { phase: 'still', job: job.id, folder, dir, again });
-        return { job: job.id, status: job.status, hint: 'The export is still running. Check it with call_tool fablecut_export {job:"' + job.id + '"}; use Retry on this card to finish saving to the chosen folder.' };
-      }
-      if (job.status === 'cancelled') { sendCard(callId, { phase: 'cancelled' }); return { job: job.id, status: 'cancelled' }; }
-      logProblem(job.code || 'EXPORT_FAILED', job.error);
-      const c = { phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error || job.status, again };
-      sendCard(callId, c);
-      return Object.assign({ job: job.id, status: job.status }, plainFailure(c));
+    f.progress = job.progress || 0;
+    sendCard(f.callId, { phase: 'running', progress: f.progress, folder: f.folder });
+  }
+  if (job.status === 'cancelled') { f.phase = 'cancelled'; await sleep(1000); sendCard(f.callId, { phase: 'cancelled' }); return; }
+  if (job.status !== 'done') {
+    logProblem(job.code || 'EXPORT_FAILED', job.error);
+    f.phase = 'failed';
+    f.failure = { phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error || job.status, again: f.again };
+    await sleep(1000); sendCard(f.callId, f.failure);
+    return;
+  }
+  const outs = job.result && Array.isArray(job.result.outputs) ? job.result.outputs : [];
+  f.report = outs.map((o) => o.report && o.report.line).filter(Boolean);
+  if (f.dir) {
+    f.phase = 'copy';
+    sendCard(f.callId, { phase: 'copy', folder: f.folder });
+    try { f.files = (await node('montclip/export-deliver', { id: f.id, dir: f.dir }, { timeoutMs: 60000, maxTotalMs: 900000 })).files; }
+    catch (e) {
+      await sleep(1000); logProblem(e.code, e.message);
+      f.phase = 'copyFailed'; f.failure = { phase: 'copyFailed', code: e.code, reason: e.message, job: f.id };
+      sendCard(f.callId, f.failure);
+      return;
     }
-    const outs = job.result && Array.isArray(job.result.outputs) ? job.result.outputs : [];
-    const report = outs.map((o) => o.report && o.report.line).filter(Boolean);
-    let files = [];
-    if (dir) {
-      sendCard(callId, { phase: 'copy', folder });
-      try { files = (await node('montclip/export-deliver', { id: job.id, dir }, { timeoutMs: 60000, maxTotalMs: 900000 })).files; }
-      catch (e) {
-        await sleep(1000); logProblem(e.code, e.message);
-        const c = { phase: 'copyFailed', code: e.code, reason: e.message, job: job.id };
-        sendCard(callId, c); return Object.assign({ job: job.id, status: 'done', copied: false }, plainFailure(c));
-      }
-    } else files = outs.filter((o) => o.ok).map((o) => ({ name: o.file })).concat(outs.length ? [] : [{ name: String(job.src || '').split('/').pop() }]);
-    await sleep(1000);
-    sendCard(callId, { phase: 'done', folder, dir, job: job.id, files, note: report.join(' · ') });
-    return { job: job.id, status: 'done', files: files.map((f) => String(f.name || f.file || '').split(/[\\/]/).pop()), report };
+  } else f.files = outs.filter((o) => o.ok).map((o) => ({ name: o.file })).concat(outs.length ? [] : [{ name: String(job.src || '').split('/').pop() }]);
+  f.phase = 'done';
+  await sleep(1000);
+  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
+}
+/** What montclip_export says about a follower: done only once the file is in its folder. */
+function exportView(f) {
+  const status = f.phase === 'copyFailed' ? 'done' : ENDED.includes(f.phase) ? f.phase : 'running';
+  const o = { job: f.id, status, progress: Math.round(f.progress * 100) / 100, phase: f.phase };
+  if (f.phase === 'done') return Object.assign(o, { files: (f.files || []).map((x) => String(x.name || x.file || '').split(/[\/]/).pop()), report: f.report || [] });
+  if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false } : {}, plainFailure(f.failure));
+  if (f.phase === 'cancelled') return o;
+  return Object.assign(o, { hint: 'The export runs in the background and its card shows the progress. Check it with montclip_export {job:"' + f.id +
+    '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
 }
 
 const HANDLERS = {
@@ -405,8 +442,12 @@ const HANDLERS = {
     const name = String(args.name || '');
     const tool = tools.find((t) => t.name === name);
     if (!tool) return { error: 'unknown operation ' + name, available: tools.map((t) => t.name), hint: 'list_tools({category}) shows each one with its parameters.' };
+    let call = args.args || {};
+    // the engine's export waits for the file by default, longer than Cindy lets a tool call run (330 s): here it answers
+    // with the job at once, and fablecut_export {job} reports it (P2, as montclip_export does)
+    if (name === 'fablecut_export' && call.job == null && call.cancel == null) call = Object.assign({}, call, { wait: false });
     try {
-      return await node('montclip/call', { session: taskOf(msg), name, arguments: args.args || {} }, { timeoutMs: 60000, maxTotalMs: 900000 });
+      return await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
     } catch (e) {
       return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
@@ -415,9 +456,27 @@ const HANDLERS = {
   async montclip_redo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'redo' }); },
   async montclip_seek(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'seek', t: Number(args.t) }); },
   /* Export, and save the file into a folder the user picks in the system dialog (folder:"default" keeps it in the
-     MontClip data folder's exports/). Progress shows on this call's card. */
+     MontClip data folder's exports/). It answers as soon as the export has started, with its job; progress shows on
+     this call's card, and montclip_export {job} reports it (see followExport). Asked again while this task's export is
+     still running, it answers with that one instead of starting a second. */
   async montclip_export(args, msg) {
-    const callId = msg.callId;
+    if (args.cancel != null) {
+      const id = String(args.cancel), f = exportFollows.get(id);
+      await node('montclip/export-cancel', { id });
+      return f ? Object.assign(exportView(f), { cancelling: true }) : { job: id, cancelling: true };
+    }
+    if (args.job != null) {
+      const id = String(args.job), f = exportFollows.get(id);
+      if (f) return exportView(f);
+      // not followed here (the plugin was reloaded): what the engine knows; a file it finished stays in exports/
+      const job = await node('montclip/export-job', { id });
+      const o = { job: id, status: job.status === 'pending' ? 'running' : job.status, progress: job.progress || 0, phase: job.status };
+      if (job.status === 'failed') { logProblem(job.code || 'EXPORT_FAILED', job.error); Object.assign(o, plainFailure({ phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error })); }
+      return o;
+    }
+    const callId = msg.callId, session = taskOf(msg);
+    const running = [...exportFollows.values()].find((f) => f.session === session && !ENDED.includes(f.phase));
+    if (running) return Object.assign(exportView(running), { already: true });
     const bound = await forTask(msg);
     const again = { args, msg: { args: msg.args, session_context: msg.session_context } };   // 重试 runs the same export
     let folder = null, dir = null;
@@ -435,13 +494,13 @@ const HANDLERS = {
     await sleep(1000);
     sendCard(callId, { phase: 'start', folder });
     let job;
-    try { job = await node('montclip/export-start', { session: taskOf(msg), expectedProject: bound && bound.project, range: args.range, preset: args.preset, profile: args.profile, outputs: args.outputs }); }
+    try { job = await node('montclip/export-start', { session, expectedProject: bound && bound.project, range: args.range, preset: args.preset, profile: args.profile, outputs: args.outputs }); }
     catch (e) {
       await sleep(1000); logProblem(e.code, e.message);
       const c = { phase: 'failed', stage: 'start', code: e.code, reason: e.message, again };
       sendCard(callId, c); return plainFailure(c);
     }
-    return finishExport(job, { callId, folder, dir, again });
+    return exportView(followExport(job, { session, callId, folder, dir, again }));
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
@@ -473,7 +532,7 @@ cindy.onHostMessage(async function (msg) {
     sendCard(msg.callId, { phase: 'running', folder: c.folder });
     try {
       const job = await node('montclip/export-job', { id: c.job });
-      await finishExport(job, { ...c, callId: msg.callId });
+      await followExport(job, { ...c, callId: msg.callId }).finished;
     } catch (e) {
       logProblem(e.code, e.message);
       sendCard(msg.callId, c);
