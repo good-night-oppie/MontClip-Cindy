@@ -1,3 +1,5 @@
+> 最新依赖：主仓 #154 的 3bf4f508 已由 QQ 正式 APPROVED，本轮直接读回；不再等待主仓QQ。候选仍需独立核移植一致性。JJ未定文案与真实模型运行未销账。见 [trial.11原包源码映射](TRIAL11-MEDIAPIPE-SOURCE-MAP.md)。下文旧状态为当时记录。
+
 # trial.11：序列上限最终文案
 
 来源：主仓 PR175 64ef89f5d3ba37b68d04be7e23ce828b1713d313。仅移植 app.js 的 {aspect,limit:SeqLib.MAX}、ui-preferences.js 的 {limit} 模板和原作者最后一项定向回归（单独 test/trial11-sequence-limit.test.js）。未移植 demo/CHANGELOG 或其他分支功能。

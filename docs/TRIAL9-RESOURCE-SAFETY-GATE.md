@@ -1,3 +1,5 @@
+> 最新依赖：主仓 #154 的 3bf4f508 已由 QQ 正式 APPROVED，本轮直接读回；不再等待主仓QQ。候选仍需独立核移植一致性。JJ未定文案与真实模型运行未销账。见 [trial.11原包源码映射](TRIAL11-MEDIAPIPE-SOURCE-MAP.md)。下文旧状态为当时记录。
+
 # trial.9 MediaPipe 资源安全前置与文案清单（2026-11-06）
 
 **最新状态已更新：修正源3bf4f508的run42189854839六项SUCCESS，旧add981df CI阻塞已消除。** 按Deja最新明确指令，已独立完成候选最小移植/验证，见 [trial.10交接](TRIAL10-RESOURCE-INTEGRATION.md)。QQ当前head审查和JJ新增文案仍待；下文失败/批准前暂停的段落保留为历史，不继续阻止本次已明确要求的可独立实现，也不当作新包批准。
