@@ -1,4 +1,4 @@
-最新产品覆盖、依赖顺序及 Video 剩余验收见 [trial.8 覆盖核对](docs/TRIAL8-PRODUCT-COVERAGE.md)。原包源码冻结在 c8af1bd，后续文档提交不改包；已装候选保持 Disabled。
+当前新候选见 [trial.9 产品集成](docs/TRIAL9-PRODUCT-INTEGRATION.md)：#154→#172→#175→#176最小修复已集成，待本次增量审查。trial.8原包与覆盖记录保留为历史；已装候选保持 Disabled。
 
 最新诊断码覆盖见 [trial.8交接](docs/TRIAL8-DIAGNOSTIC-CODES.md)。锁提示已用JJ定稿；QQ 已完成绑定 c8af1bd 的增量安全复核（COMMENTED，非 Approve）。[DD 正式 UI 升级清单](docs/TRIAL8-UPGRADE-CHECKLIST.md)已准备，安装/启用仍需另获授权。
 
@@ -10,7 +10,7 @@
 
 # MontClip 独立候选试用
 
-本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.8`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
+本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.9`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
 
 已安装候选的升级及真实宿主复验见 [trial.3交接](docs/TRIAL3-HOST-COMPATIBILITY.md)。`trial.2`曾在真实宿主启动失败，新包待DD复验，不称已可用。
 
