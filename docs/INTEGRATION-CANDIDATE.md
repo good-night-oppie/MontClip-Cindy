@@ -4,7 +4,7 @@ Status: **Draft / pending review and installation acceptance**. No installation,
 
 ## Reproducible sources
 
-- Version: `0.5.1-preview.5-integration.20261105`.
+- Version: `0.5.1-preview.5.int20261105`.
 - Plugin branch: `integration/review-candidate-20261105`, based on fetched main `85c8183ab60c98e06e03b03fa4e123feb4ca7334` in an isolated worktree.
 - Integrated open PR heads: #7 `c97f275bcec6ea27ce20d7c611d9c6aed3f108cd`, #9 `f3312d9f537d46f23128ec2eeddd122439492e56`, #11 `0dfa868686d1faa78d38ceec5230e6bb8d531221`. These PRs are **not merged**. #7/#9 have GoodNightOppie APPROVED reviews at these heads; #11 has no review. Their reviews do not approve this combined candidate.
 - Engine: `0ceb8703d1919cc8dc09fd72685cf03e97f24c88`, published on `good-night-oppie/MontClip` branch `integration/cindy-candidate-20261105`. Submodule and engine-lock.json agree.
