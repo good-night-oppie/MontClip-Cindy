@@ -1,3 +1,5 @@
+最新诊断码覆盖见 [trial.8交接](docs/TRIAL8-DIAGNOSTIC-CODES.md)。锁提示已用JJ定稿，待QQ新增常量复核，不安装。
+
 最新锁归属提示见 [trial.7交接](docs/TRIAL7-LOCK-REASON.md)。JJ已定稿并实施，等待QQ本次增量复核；不安装。
 
 最新复制诊断修复见 [trial.6交接](docs/TRIAL6-COPY-PRIVACY.md)。等待QQ增量复核及JJ定稿，不安装、不交主播。
@@ -6,7 +8,7 @@
 
 # MontClip 独立候选试用
 
-本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.7`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
+本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.8`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC Windows合成预览已通过，真实素材及Europa仍待验。
 
 已安装候选的升级及真实宿主复验见 [trial.3交接](docs/TRIAL3-HOST-COMPATIBILITY.md)。`trial.2`曾在真实宿主启动失败，新包待DD复验，不称已可用。
 
