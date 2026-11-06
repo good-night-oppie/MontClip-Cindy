@@ -88,7 +88,8 @@ async function probeUI(mediaId,clipId,sourceTimes,timelineTimes){const m=getMedi
    assert.ok(!receipt.h264Offset.error,receipt.h264Offset.error);
    assert.match(receipt.h264Offset.text,/Timeline at 15s/);
    assert.match(receipt.h264Offset.text,/black 0%/);
-   assert.match(receipt.h264Offset.text,/colour cast: blue/);
+   const rgb=/mean rgb \[([^\]]+)\]/.exec(receipt.h264Offset.text)?.[1].split(',').map(Number);
+   assert.ok(rgb&&rgb[2]>0.9&&rgb[0]<0.1&&rgb[1]<0.1,'timeline15 must measure the blue source frame, independent of descriptive cast label');
   }
   receipt.ok=true;
  }catch(e){receipt.error=String(e.stack||e);process.exitCode=1;console.error(receipt.error);}
