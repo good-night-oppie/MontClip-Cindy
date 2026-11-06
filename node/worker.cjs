@@ -10,7 +10,6 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const net = require("node:net");
 const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
@@ -41,19 +40,10 @@ function ffmpegState() {
   if (!spec.supported) return "missing";
   return fetchFfmpeg().upToDate(FFMPEG_DIR, spec, { win: process.platform === "win32" }).ok ? "downloaded" : "changed";
 }
-/* The same port each time when it is free, so the editor frame keeps its address across worker restarts. */
-const PREFERRED_PORT = process.env.MONTCLIP_CINDY_PORT !== undefined ? Number(process.env.MONTCLIP_CINDY_PORT) : 47777;
 
 const reply = (m) => process.stdout.write(JSON.stringify(m) + "\n");
 const note = (entry) => process.stderr.write("[montclip] " + JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
 
-function freePort(port) {
-  return new Promise((resolve, reject) => {
-    const s = net.createServer();
-    s.once("error", (e) => (port ? freePort(0).then(resolve, reject) : reject(e)));
-    s.listen(port, "127.0.0.1", () => { const got = s.address().port; s.close(() => resolve(got)); });
-  });
-}
 
 let started = null, starting = null;   // the running engine: {origin, port, token, tools, callTool, …}
 function api(method, urlPath, body) {
@@ -73,7 +63,7 @@ function api(method, urlPath, body) {
 async function boot() {
   fs.mkdirSync(DATA, { recursive: true });
   const envFilled = fillWindowsEnv(process.env);
-  const port = await freePort(PREFERRED_PORT);
+  const port = 0;
   const token = newToken();
   Object.assign(process.env, {
     PORT: String(port), FABLECUT_PORT: String(port), HOST: "127.0.0.1",
@@ -85,14 +75,17 @@ async function boot() {
     MONTCLIP_FFMPEG_REMEDY: "In Cindy, install it from the MontClip editor tab's banner, or ask the chat to run montclip_install_ffmpeg.",
     MONTCLIP_ASR_DIR: ASR_DIR, MONTCLIP_ASR_MODELS_DIR: ASR_MODELS_DIR,
   });
-  require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
-  started = { origin: `http://127.0.0.1:${port}`, port, token };
-  let up = false;
-  for (let i = 0; i < 100 && !up; i++) {
-    up = await api("GET", "/api/project").then((r) => r.status === 200, () => false);
-    if (!up) await new Promise((r) => setTimeout(r, 100));
-  }
-  if (!up) throw new Error("the MontClip engine did not start");
+  const ready = await new Promise((resolve, reject) => {
+    const onReady = (message) => { clearTimeout(timer); resolve(message); };
+    const timer = setTimeout(() => { process.removeListener("montclip-ready", onReady); reject(new Error("the MontClip engine did not report readiness")); }, 10000);
+    process.once("montclip-ready", onReady);
+    try { require(path.join(APP, "server.js")); }
+    catch (e) { clearTimeout(timer); process.removeListener("montclip-ready", onReady); reject(e); }
+  });
+  const endpoint = new URL(ready.origin);
+  if (endpoint.protocol !== "http:" || endpoint.hostname !== "127.0.0.1" || !Number(endpoint.port)) throw new Error("invalid engine readiness origin");
+  process.env.FABLECUT_PORT = endpoint.port;
+  started = { origin: ready.origin, port: Number(endpoint.port), token };
   const mcp = require(path.join(APP, "mcp-server.js"));
   const browser = require(path.join(APP, "export-jobs.js")).findBrowser() || null;
   Object.assign(started, { tools: mcp.TOOLS, callTool: mcp.callTool, envFilled, browser, ffmpeg: ffmpegState() });

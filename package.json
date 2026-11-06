@@ -1,10 +1,12 @@
 {
   "name": "montclip-cindy",
-  "version": "0.5.1",
+  "version": "0.5.1-preview.5-integration.20261105",
   "private": true,
   "description": "MontClip plugin for Cindy",
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "node build.cjs",
     "test": "node build.cjs && node --test test/packed.test.cjs test/install-ffmpeg.test.cjs test/ffmpeg-retry.test.cjs test/asr-card.test.cjs test/export-job.test.cjs test/worker-exit.test.cjs"

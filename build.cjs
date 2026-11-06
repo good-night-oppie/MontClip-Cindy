@@ -28,7 +28,11 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
 for (const f of ["worker.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
-fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ engine: lock }, null, 2) + "\n");
+fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({
+  plugin: { repository: "https://github.com/good-night-oppie/MontClip-Cindy.git",
+    commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: __dirname, encoding: "utf8" }).trim(),
+    dirty: !!execFileSync("git", ["status", "--porcelain", "--untracked-files=normal"], { cwd: __dirname, encoding: "utf8" }).trim() },
+  engine: lock }, null, 2) + "\n");
 // the engine and the editor page; dev tooling, tests, docs and the Electron shell stay out
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);
 const FILE_EXT = new Set([".js", ".html", ".css", ".json", ".svg", ".md"]);

@@ -12,8 +12,8 @@ function fakeEngine(dir) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "server.js"), `
     const http = require("node:http"), fs = require("node:fs"), path = require("node:path");
-    http.createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end("{}"); })
-      .listen(+process.env.PORT, "127.0.0.1");
+    const server = http.createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end("{}"); })
+      .listen(0, "127.0.0.1", () => process.emit("montclip-ready", {type:"montclip-ready", origin:"http://127.0.0.1:"+server.address().port}));
     process.on("SIGTERM", () => { fs.writeFileSync(path.join(process.env.FABLECUT_DATA_DIR, "shutdown-ran"), "1"); process.exit(0); });
   `);
   fs.writeFileSync(path.join(dir, "mcp-server.js"), "module.exports = { TOOLS: [], callTool: async () => ({}) };");

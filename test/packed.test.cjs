@@ -65,6 +65,8 @@ test("built worker starts, serves editor assets and isolates task projects", { t
   }
   const tools = await rpc("montclip/tools");
   assert.ok(tools.tools.some(x => x.name === "fablecut_patch_project"));
+  assert.ok(tools.tools.some(x => x.name === "fablecut_analyze_reference"));
+  assert.equal(tools.tools.some(x => x.name === "analyze-video"), false);
   const a = await rpc("montclip/bind", { session: "repo-test-A" });
   const b = await rpc("montclip/bind", { session: "repo-test-B" });
   assert.notEqual(a.project, b.project);
@@ -91,4 +93,10 @@ test("built worker starts, serves editor assets and isolates task projects", { t
 
 test("the package carries the speech manifest the engine reads (desktop/asr-manifest.json)", () => {
   assert.ok(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json")).equals(fs.readFileSync(path.join(DIST, "node", "app", "desktop", "asr-manifest.json"))));
+});
+
+test('the package identifies its plugin source commit as well as its engine', () => {
+  const source=JSON.parse(fs.readFileSync(path.join(DIST,'SOURCE.json'),'utf8'));
+  assert.match(source.plugin.commit,/^[a-f0-9]{40}$/);
+  assert.equal(source.engine.commit,require('../engine-lock.json').commit);
 });
