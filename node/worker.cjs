@@ -40,7 +40,7 @@ function keepResult(job) {
 async function exportJob(id) {
   const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(id || "")));
   if (r.status === 200) {
-    if (r.body.status === "done") keepResult(r.body);
+    if (r.body.status === "done") try { keepResult(r.body); } catch (e) { note({event:"export-result-not-kept",id:r.body.id,code:e.code}); }
     return r.body;
   }
   if (r.status === 404) {
