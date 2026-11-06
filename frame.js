@@ -112,7 +112,7 @@ function copyButton(box, problem) {
     if (view !== 'task' || !session) return true;
     const b = await ask('bind', { session });
     if (b.error) {
-      if (inUse(b)) show(b.error, true, true);
+      if (inUse(b)) show(b.error, true, b.reason !== 'LOCK_OWNER_UNVERIFIED');
       else { const f = failureText('MontClip 没能打开这个任务的项目。', b.error, b.code); show(f.text, true, false, f.problem); }
       return false;
     }
@@ -207,7 +207,7 @@ function copyButton(box, problem) {
     if (!(await bind())) return;
     const a = await ask('editor');
     if (a.error || !a.url) {
-      if (inUse(a)) show(a.error, true, true);
+      if (inUse(a)) show(a.error, true, a.reason !== 'LOCK_OWNER_UNVERIFIED');
       else { const f = failureText('MontClip 没能启动。', a.error, a.code); show(f.text, true, false, f.problem); }
       return;
     }

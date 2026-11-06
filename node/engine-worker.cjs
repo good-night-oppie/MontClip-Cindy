@@ -360,6 +360,6 @@ readline.createInterface({ input: process.stdin }).on("close", stopEngine).on("l
   try { reply({ jsonrpc: "2.0", id: req.id, result: await dispatch(req.method, req.params || {}) }); }
   catch (e) {
     note({ event: "error", method: req.method, message: String(e && e.message) });
-    reply({ jsonrpc: "2.0", id: req.id, error: { code: typeof e.code === "number" ? e.code : -32000, message: "MontClip operation failed; inspect the error code.", data: typeof e.code === "string" ? { code: e.code, ...(Number.isFinite(e.need) ? { need: e.need } : {}) } : undefined } });
+    reply({ jsonrpc: "2.0", id: req.id, error: { code: typeof e.code === "number" ? e.code : -32000, message: "MontClip operation failed; inspect the error code.", data: typeof e.code === "string" ? { code: e.code, ...(e.code === "DATA_DIR_IN_USE" && e.reason === "LOCK_OWNER_UNVERIFIED" ? {reason:"LOCK_OWNER_UNVERIFIED"} : {}), ...(Number.isFinite(e.need) ? { need: e.need } : {}) } : undefined } });
   }
 });

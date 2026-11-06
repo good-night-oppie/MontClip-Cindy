@@ -13,3 +13,12 @@ test('missing exit confirmation is explicit, never reported clean',async()=>{con
 test('write acceptance without protocol reply times out and kills child',async()=>{const h=host({write:()=>Promise.resolve()}),c=createChannel(h.child,{host:true,closeMs:50,requestMs:10});await c.ready;await a.rejects(c.request('x',{}),/timeout/);a.equal(c.alive,false);});
 test('shutdown while write is pending rejects and confirms exit',async()=>{let finish;const h=host({write:()=>new Promise(r=>{finish=r;})}),c=createChannel(h.child,{host:true,closeMs:50});await c.ready;const pending=c.request('x',{});const check=a.rejects(pending,/closing/);await Promise.resolve();await c.close();await check;finish();a.equal(c.alive,false);});
 test('valid JSON null is a protocol failure with cleanup',async()=>{const h=host({write:(_,out)=>queueMicrotask(()=>out.emit('data','null\n'))}),c=createChannel(h.child,{host:true,closeMs:50});await c.ready;await a.rejects(c.request('x',{}),/protocol/);a.equal(c.alive,false);});
+for(const [code,reason,expected] of [
+ ['DATA_DIR_IN_USE','LOCK_OWNER_UNVERIFIED','LOCK_OWNER_UNVERIFIED'],
+ ['DATA_DIR_IN_USE','untrusted-private-reason',undefined],
+ ['OTHER','LOCK_OWNER_UNVERIFIED',undefined]
+])test('child transport forwards only the controlled lock reason: '+code+'/'+reason,async()=>{
+ const h=host({write:(text,out)=>{const r=JSON.parse(text);queueMicrotask(()=>out.emit('data',JSON.stringify({id:r.id,error:{message:'/synthetic/private/dir',data:{code,reason}}})+'\n'));}});
+ const c=createChannel(h.child,{host:true,closeMs:50});await c.ready;
+ await a.rejects(c.request('x',{}),e=>{a.equal(e.reason,expected);if(expected)a.doesNotMatch(e.message,/synthetic|private/);return true;});await c.close();
+});

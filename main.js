@@ -35,6 +35,12 @@ const DATA_DIR_IN_USE_TEXT = {
   },
 };
 function engineError(r) {
+  if (r.data?.code === 'DATA_DIR_IN_USE' && r.data?.reason === 'LOCK_OWNER_UNVERIFIED') {
+    return Object.assign(new Error('现在没法确认这里的项目是不是正在被其他窗口使用，所以 MontClip 先不打开。请别反复重开，也别删除项目文件；把这段提示发给给你这个包的人，让他们检查。'), {
+      code: 'DATA_DIR_IN_USE', reason: 'LOCK_OWNER_UNVERIFIED',
+      messageEn: "MontClip can't tell whether your projects are being used by another window, so it won't open them right now. Don't keep reopening MontClip or delete any files. Send this message to the person who gave you this package so they can check."
+    });
+  }
   const message = String(r.message || 'MontClip engine failed');
   if (/DATA_DIR_IN_USE|Another MontClip \(/.test(message)) {
     const who = /Another MontClip \(([\w-]+),/.exec(message);
@@ -626,7 +632,7 @@ channel.onmessage = async (e) => {
     // the task page opened by 复制问题信息 asks what to show (once: a later load shows nothing)
     else if (m.type === 'problem') { const p = pendingProblems.get(String(m.session || '')); pendingProblems.delete(String(m.session || '')); a = p ? { shown: p } : { shown: null }; }
     else a = { error: 'unknown request ' + m.type };
-  } catch (err) { a = { error: String(err.message || err), code: err.code || null, ...(err.messageEn ? { errorEn: err.messageEn } : {}) }; }
+  } catch (err) { a = { error: String(err.message || err), code: err.code || null, ...(err.code === 'DATA_DIR_IN_USE' && err.reason === 'LOCK_OWNER_UNVERIFIED' ? {reason: 'LOCK_OWNER_UNVERIFIED'} : {}), ...(err.messageEn ? { errorEn: err.messageEn } : {}) }; }
   a = Object.assign({ reqId: m.reqId, answer: true }, a);
   answered.set(m.reqId, a);
   if (answered.size > 200) answered.delete(answered.keys().next().value);
