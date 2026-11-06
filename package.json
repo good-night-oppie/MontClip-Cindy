@@ -1,6 +1,6 @@
 {
   "name": "montclip-cindy",
-  "version": "0.5.1-trial.5",
+  "version": "0.5.1-trial.6",
   "private": true,
   "description": "MontClip plugin for Cindy",
   "license": "MIT",
@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "node build.cjs",
-    "test": "node build.cjs && node --test test/packed.test.cjs test/install-ffmpeg.test.cjs test/ffmpeg-retry.test.cjs test/asr-card.test.cjs test/export-job.test.cjs test/worker-exit.test.cjs test/export-delivery.test.cjs test/export-recovery.test.cjs test/panel-labels.test.cjs test/panel-context.test.cjs test/trial-isolation.test.cjs test/trial-path-race.test.cjs test/child-channel.test.cjs test/migration-security.test.cjs test/ffmpeg-live-refresh.test.cjs"
+    "test": "node build.cjs && node --test test/packed.test.cjs test/install-ffmpeg.test.cjs test/ffmpeg-retry.test.cjs test/asr-card.test.cjs test/export-job.test.cjs test/worker-exit.test.cjs test/export-delivery.test.cjs test/export-recovery.test.cjs test/panel-labels.test.cjs test/panel-context.test.cjs test/trial-isolation.test.cjs test/trial-path-race.test.cjs test/child-channel.test.cjs test/migration-security.test.cjs test/ffmpeg-live-refresh.test.cjs test/copy-line-privacy.test.cjs test/trial6-control-flow.test.cjs",
+    "test:trial6": "node build.cjs && node --test test/copy-line-privacy.test.cjs test/trial6-control-flow.test.cjs test/migration-security.test.cjs test/ffmpeg-retry.test.cjs"
   }
 }
