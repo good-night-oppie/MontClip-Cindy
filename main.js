@@ -295,16 +295,20 @@ function openEditorFailed(error, code) {
    engine's own aboutMb (asr-status.js), so nothing here rounds or writes a size. */
 var ASR_CARD = {   // var: the tests read it from main.js's own scope
   zh: { label: '听写', hint: '把说的话转成文字', ready: '已装好', model: (mb) => '还没装模型（约 ' + mb + ' MB）', engine: '还没装听写程序',
-    note: '做字幕、按说过的话找位置时要用；剪辑和导出不受影响。' },
+    modelNoSize: '还没装模型', unknown: '现在查不到', note: '做字幕、按说过的话找位置时要用；剪辑和导出不受影响。' },
   en: { label: 'Transcription', hint: 'Turns speech into text', ready: 'Installed', model: (mb) => 'Model not installed (about ' + mb + ' MB)',
-    engine: 'Transcription program not installed', note: 'Needed for captions and for finding a moment by what was said. Editing and exporting still work.' },
+    engine: 'Transcription program not installed', modelNoSize: 'Model not installed', unknown: 'Can\'t check right now',
+    note: 'Needed for captions and for finding a moment by what was said. Editing and exporting still work.' },
 };
 const asrText = (lang) => ASR_CARD[lang === 'en' ? 'en' : 'zh'];
+/* No manifest, no size (QQ, review of c97f275b): modelNoSize, its own sentence (JJ, 2026-11-06), never 「约 null MB」;
+   a state the worker could not read says so (unknown) instead of a bare dash. */
 function asrLine(a, lang) {
   const t = asrText(lang);
-  if (!a) return '—';
+  if (!a) return t.unknown;
   if (a.engine && a.model) return t.ready;
-  return a.engine ? t.model(a.modelMb) : t.engine;
+  if (!a.engine) return t.engine;
+  return typeof a.modelMb === 'number' && Number.isFinite(a.modelMb) ? t.model(a.modelMb) : t.modelNoSize;
 }
 /** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
