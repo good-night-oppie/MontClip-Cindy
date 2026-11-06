@@ -1,5 +1,7 @@
 # trial.9 MediaPipe 资源安全前置与文案清单（2026-11-06）
 
+**最新状态已更新：修正源3bf4f508的run42189854839六项SUCCESS，旧add981df CI阻塞已消除。** 按Deja最新明确指令，已独立完成候选最小移植/验证，见 [trial.10交接](TRIAL10-RESOURCE-INTEGRATION.md)。QQ当前head审查和JJ新增文案仍待；下文失败/批准前暂停的段落保留为历史，不继续阻止本次已明确要求的可独立实现，也不当作新包批准。
+
 **当前阻塞：add981df 源补丁 CI 失败，不可放行移植。** 已直接核验 [run 42187166174](https://github.com/good-night-oppie/MontClip/actions/runs/42187166174) 的 head 为 `add981df73c0599fa7859ada636fd78effc26e8a`：Tests(Node18/20/22)及Tests(Windows,Node22)四项均 FAILURE，失败步骤均为测试套件；Syntax & sanity、Release readiness两项 SUCCESS。根因尚未由本任务确认，不猜测失败是环境问题，也不用上游本地通过数字覆盖CI失败。原作者已接手排障，本任务只读准备，不重复下载、不并行改其源码。
 
 恢复依赖顺序：**原作者修正SHA → 核该SHA实际CI与QQ审查/JJ文案 → 重生成并核对最小移植diff → 候选引擎受影响验证 → 新原包**。下文add981df补丁及9资源清单仅为待修正的准备快照，不能直接应用；收到修正SHA后需核新旧差异及是否改变资源字节/hash/许可，不默认为文档修订或等价实现。冻结trial.9继续保持原包与限制。
