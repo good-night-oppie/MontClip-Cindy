@@ -1,6 +1,37 @@
 # trial.9 MediaPipe 资源安全前置与文案清单（2026-11-06）
 
-**硬依赖：主仓 #154 / 任务 0cda57b0 的资源锁定修复 → 候选最小移植与验证 → 主播交付。** 主仓是唯一实现方，本任务不并行写同一加载器。尚未收到该补丁的最终 commit/资源清单/许可材料，当前不移植、不重打未变 trial.9。
+**硬依赖：主仓 #154 资源锁定补丁的当前 head 审查/JJ文案 → 候选最小移植与验证 → 主播交付。** 主仓是唯一实现方，本任务不并行写同一加载器。源码输入已到：远端核验 `add981df73c0599fa7859ada636fd78effc26e8a`，父提交 `b783bd36cc38adbdf67333786d2f3c09ea38c287`，9资源清单、真实字节审计及许可限制已读。当前 head 的 QQ 核查通知已入队不等于批准；本轮 GitHub reviews 返回空列表，未取得当前批准，因此不移植、不重打 trial.9。JJ新增提示及此前未定稿文字仍待，不再写“源码输入未到”。
+
+## add981df 可执行移植准备（尚未应用）
+
+已 fetch 到引擎隔离仓 `refs/audit/pr154`，未切换/修改候选引擎工作树；原候选 pin 仍 fa9cd139。上游只新增 add981df 一个提交，共26文件，不应整头合入其main历史。
+
+| 文件/增量 | 批准后操作 | 当前核对 |
+|---|---|---|
+| bgremove-assets.js | 原样移植锁定清单及load/verify/readBounded/locateFile | 9文件，固定0.1.1675465747，共12,379,063字节；fetch integrity+WebCrypto、拒绝重定向、流式字节上限、全部通过后才创建Blob；不另写加载器 |
+| app.js | 仅移植ensureBgSeg资源加载/失败dispose和相关注释 | 保留候选已有#172/175/176、编码器早拒绝及抠像失败导出；不整文件覆盖 |
+| index.html | 加bgremove-assets.js，位于app.js之前 | 保留候选agent-limits与其余script顺序 |
+| ui-preferences.js | 仅新增own.bgremove-assets-failed及最终JJ修订 | 旧17key矩阵保留，不覆盖既有三句/字体定稿；若JJ新commit改变文字，映射实际获审head |
+| LICENSES.md、licenses/mediapipe/LICENSE、README.md | 移植准确来源、许可全文及限制 | 插件build.cjs明确复制LICENSES.md、递归复制tracked licenses目录；根tracked .js会包含新加载器。须以最终ZIP逐字节证实，不仅靠源规则推断 |
+| test/bgremove-assets.test.js、test/bgremove-consent.test.js、real-tests/bgremove-assets-byte-audit.cjs | 移植必要测试，按候选实际引擎执行 | 保留bgremove-copy/font现有测试；字节审计脚本需明确本地材料，不自动下载或执行资源 |
+| real-tests/bgremove-consent-browser-smoke.cjs | 先审启动隔离，再选取受影响浏览器负控 | 不因上游13/13就称候选已测；必须符合独占目录/PORT0/127.0.0.1/所属握手/私有调试pipe；不复用固定端口脚本 |
+| package.json、desktop/package-win.cjs | 记录为上游npm/Electron分发许可入口；不直接移植桌面专用改动 | Cindy由build.cjs复制许可证，须验证实际产物；无须把桌面打包功能引入候选 |
+| docs/demo/*、docs/docs/*、docs/demo/sync.js | 不移植生成demo和无关网站资产 | 候选自有文档需按实际范围更新，不省略上游验证/许可来源引用 |
+
+已生成未应用的选定文件补丁 `dist/pr154-add981df-prepared.patch`（37,023字节，SHA256 `8566130ebf3a5666c95bdaa8c186437cf91ad3a78c5de6deb37033cf1b4828f1`）和9项清单 `dist/pr154-add981df-resource-inventory.tsv`，仅本地准备材料，不入包、不入Git。获当前批准后先重核remote head及补丁基线，再应用明确文件diff并人工解决候选语义冲突；不得把此准备补丁当已审或直接无检查执行。完整文档来源：主仓该head的 `docs/validation/2026-11-06-pr154-pinned-assets-wip.md` 与 `licenses/mediapipe/README.md`。
+
+上游报告27/27单测、13/13合成浏览器、全量1745 pass/7 skip、真实9文件离线WebCrypto及篡改拒绝：均属于上游报告，本轮没有在候选重跑。其授权真实字节审计下载精确npm tarball（4,049,373字节），不包含真实初始化/推理或live CDN运行授权，本任务也未下载。
+
+许可限制：精确npm包声明Apache-2.0，但无LICENSE/NOTICE/gitHead；随附官方项目LICENSE是参考证据，不证明该commit构建这些二进制，也不证明模型许可证已单独核实。真实9文件hash匹配不扩大成网络沙箱保证；上游静态检查仍说明通用FS helper可接受URL，未见初始化调用，真实运行未验。
+
+### 新增第18项：未定稿、尚未入候选
+
+`own.bgremove-assets-failed`：
+
+- 中：AI 抠像文件未能完成下载和校验，已停止加载。请关闭再开启 AI 抠像重试。
+- 英：AI background removal files could not be loaded and verified. Loading stopped. Turn AI background removal off and on again to retry.
+
+这是 add981df 的新草稿，将替代下文记录的无key英文失败toast；等待JJ，不能写成已定稿。下文旧17key表继续准确描述冻结trial.9。当前可完成的是映射、包路径规则核对、资源清单和验证步骤准备；实际移植与新包阻塞于当前head QQ审查及JJ所需定稿。
 
 [QQ review 5797240147](https://github.com/good-night-oppie/MontClip-Cindy/pull/13#pullrequestreview-5797240147) 已直接读回：COMMENTED，绑定文档head e5193751 / engine fa9cd139；确认仅文档差异使结论适用于 SOURCE fcd2279 的 trial.9。允许独立测试电脑试用，出现抠像下载提示选“先不用”（评论称“不下载”，当前实际按钮为“先不用”）。不得交主播、替换现用或据此合并；不是本任务安装/启用授权。非 AI 抠像功能的独立试用不依赖此补丁，仍按各自授权/现场条件执行。
 
@@ -38,7 +69,7 @@
 
 无 key 的失败 toast（app.js ensureBgSeg catch）：`Background removal unavailable — couldn't load MediaPipe (offline?). Using chroma key still works.` 当前仅英文，未找到JJ定稿依据，且会触及下载失败路径；交Deja/JJ与上游唯一实现方协调，不在候选另造一套提示。loadScript内部Error的 `script load failed: <src>` 被同一catch转固定toast，不能将其误记为已存在的可见翻译key。
 
-## 收到主仓补丁后的移植/验收准备
+## 当前补丁获审后的移植/验收步骤
 
 1. 核最终主仓全SHA、父提交及资源方案；建立原commit→候选diff→新引擎commit映射，只移植实际加载器/资源清单/必要测试/许可与定稿，不整头引入无关main。不修改#120或另一活动分支。
 2. 清点主入口JS、运行时再加载的JS/wasm/model/其它文件，每项记录精确版本、文件名、来源URL、字节数、加密摘要、许可证/NOTICE/对应源码及再分发范围。不能假定只有脚本SRI就覆盖wasm/model，也不能把包SHA当第三方来源真实性证明；缺项退回主仓明确补齐。
