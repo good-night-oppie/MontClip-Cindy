@@ -199,7 +199,7 @@ function copyFailureText(c, lang) {
 }
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
-  const text = c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
+  const text = c.code === 'NO_JOB' ? '这次导出的记录已失效。请打开导出文件夹查看已有成片；没有找到的话，可以重新导出。你的剪辑都还在。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -242,7 +242,7 @@ function exportCard(c, lang) {
   const files = (c.files || []).map((f) => '<li style="overflow-wrap:anywhere">' + esc(f.name) + (f.bytes ? ' · ' + sizeText(f.bytes, lang) : '') +
     (f.renamed ? '<div style="' + small + ';margin-top:2px">' + t.renamed + '</div>' : '') + '</li>').join('');
   const where = c.phase === 'done' ? '<p style="margin:8px 0 0">' + (c.folder ? t.savedTo(esc(c.folder)) : t.savedDefault) + '</p>' : '';
-  const body = c.phase === 'still' ? '<p style="' + small + '">' + (c.job ? (lang === 'en' ? 'Still exporting; click Retry to check this export and finish saving to the chosen folder.' : '还在导出，尚未存入所选文件夹。点〔重试〕查看这次导出，完成后继续存入原来选的文件夹。') : t.stillNote) + '</p>'
+  const body = c.code === 'NO_JOB' ? '<p>' + (lang === 'en' ? 'This export record has expired. Open the exports folder to look for the finished file, or export again. Your edits are kept.' : plainFailure(c).error) + '</p>' : c.phase === 'still' ? '<p style="' + small + '">' + (c.job ? (lang === 'en' ? 'Still exporting; click Retry to check this export and finish saving to the chosen folder.' : '还在导出，尚未存入所选文件夹。点〔重试〕查看这次导出，完成后继续存入原来选的文件夹。') : t.stillNote) + '</p>'
     : c.phase === 'cancelled' ? '<p style="' + small + '">' + t.noFolder + '</p>'
     : c.phase === 'copyFailed' ? '<p style="margin:0">' + esc(copyFailureText(c, lang)) + '</p>'
     // 导出没有完成: why, in plain words; 你的剪辑都还在，没有丢。 — never the raw error (JJ v2)
@@ -255,7 +255,7 @@ function exportCard(c, lang) {
   // 打开文件夹: the folder she chose, when the files went there; else 打开导出文件夹 (a failed copy leaves them in
   // exports), and after a failed copy 换个文件夹 too (JJ v2)
   const picked = c.phase === 'done' && !!c.dir;
-  const open = c.phase === 'still' && c.job ? buttons([['retry-delivery', t.retry, false]]) : c.phase === 'done' || c.phase === 'copyFailed'
+  const open = c.code === 'NO_JOB' ? buttons([['open-folder:exports', t.openExports, false]]) : c.phase === 'still' && c.job ? buttons([['retry-delivery', t.retry, false]]) : c.phase === 'done' || c.phase === 'copyFailed'
     ? buttons([['open-folder:' + (picked ? 'picked' : 'exports'), picked ? t.openFolder : t.openExports, false]]
         .concat(c.phase === 'copyFailed' && c.job ? [['pick-again', t.pickAgain, false]] : [])
         .concat(c.phase === 'copyFailed' && hasRaw(c) ? [['copy-problem', t.copyProblem, false]] : [])) +
@@ -469,7 +469,9 @@ const HANDLERS = {
       const id = String(args.job), f = exportFollows.get(id);
       if (f) return exportView(f);
       // not followed here (the plugin was reloaded): what the engine knows; a file it finished stays in exports/
-      const job = await node('montclip/export-job', { id });
+      let job;
+      try { job = await node('montclip/export-job', {id}); }
+      catch (e) { if (e.code !== 'NO_JOB') throw e; const c = {phase:'failed',code:'NO_JOB',job:id}; sendCard(msg.callId,c); return {job:id,status:'failed',...plainFailure(c)}; }
       const o = { job: id, status: job.status === 'pending' ? 'running' : job.status, progress: job.progress || 0, phase: job.status };
       if (job.status === 'failed') { logProblem(job.code || 'EXPORT_FAILED', job.error); Object.assign(o, plainFailure({ phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error })); }
       return o;
@@ -494,7 +496,7 @@ const HANDLERS = {
     await sleep(1000);
     sendCard(callId, { phase: 'start', folder });
     let job;
-    try { job = await node('montclip/export-start', { session, expectedProject: bound && bound.project, range: args.range, preset: args.preset, profile: args.profile, outputs: args.outputs }); }
+    try { job = await node('montclip/export-start', { session, expectedProject: bound && bound.project, dir, range: args.range, preset: args.preset, profile: args.profile, outputs: args.outputs }); }
     catch (e) {
       await sleep(1000); logProblem(e.code, e.message);
       const c = { phase: 'failed', stage: 'start', code: e.code, reason: e.message, again };
@@ -535,7 +537,7 @@ cindy.onHostMessage(async function (msg) {
       await followExport(job, { ...c, callId: msg.callId }).finished;
     } catch (e) {
       logProblem(e.code, e.message);
-      sendCard(msg.callId, c);
+      sendCard(msg.callId, e.code === 'NO_JOB' ? {phase:'failed',code:'NO_JOB',job:c.job} : c);
     }
     return;
   }
