@@ -1,6 +1,6 @@
 最新产品覆盖、依赖顺序及 Video 剩余验收见 [trial.8 覆盖核对](docs/TRIAL8-PRODUCT-COVERAGE.md)。原包源码冻结在 c8af1bd，后续文档提交不改包；已装候选保持 Disabled。
 
-最新诊断码覆盖见 [trial.8交接](docs/TRIAL8-DIAGNOSTIC-CODES.md)。锁提示已用JJ定稿，待QQ新增常量复核，不安装。
+最新诊断码覆盖见 [trial.8交接](docs/TRIAL8-DIAGNOSTIC-CODES.md)。锁提示已用JJ定稿；QQ 已完成绑定 c8af1bd 的增量安全复核（COMMENTED，非 Approve）。[DD 正式 UI 升级清单](docs/TRIAL8-UPGRADE-CHECKLIST.md)已准备，安装/启用仍需另获授权。
 
 最新锁归属提示见 [trial.7交接](docs/TRIAL7-LOCK-REASON.md)。JJ已定稿并实施，等待QQ本次增量复核；不安装。
 

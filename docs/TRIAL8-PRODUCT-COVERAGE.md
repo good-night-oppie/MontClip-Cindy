@@ -1,6 +1,14 @@
 # trial.8 产品覆盖与 Video 剩余验收（2026-11-06，SOP v2）
 
-这是冻结原包的源码审计，不是新包、安装授权或人工验收通过。已装候选保持 Disabled；本轮未安装、启用、下载 FFmpeg、触碰用户项目或重跑既有安全/媒体测试。QQ 当前 head 增量复审由 Deja 衔接。
+这是冻结原包的源码审计，不是新包、安装授权或人工验收通过。已装候选保持 Disabled；本轮未安装、启用、下载 FFmpeg、触碰用户项目或重跑既有安全/媒体测试。QQ 对此包绑定的增量安全复核已完成，详见下一节；不再等待 JJ 或重复请求 QQ 审同一增量。
+
+## 已完成安全复核与仍需宿主确认的范围
+
+已直接读取 GitHub [GoodNightOppie review 5796992644](https://github.com/good-night-oppie/MontClip-Cindy/pull/13#pullrequestreview-5796992644)，提交于 2026-11-06T07:21:56Z，状态 **COMMENTED**，commit_id 为 `c8af1bd0dba6d322c444b4316ab2551206f49eda`，正文绑定引擎 `6abdba1b`。QQ 复用此前 copyLine 十类泄露负控，完成锁 reason 链、JJ 固定文案及诊断码白名单核验，本轮没有重跑测试或安装。允许范围是独立测试机试用；不是 GitHub APPROVED、合并许可、正式安装或替换授权。文档后续提交不改变这份已审产品字节；新增产品变更须按实际增量另审。
+
+Deja 本轮转述 QQ 已报告主人授权上线 size gate `0ee09f0`，默认无例外、config 未改。这里记录为父端授权/上线报告，不继续沿用旧“未上线”说法；本任务未独立部署核验或修改 gate/config，也不将该授权扩展到候选安装、启用、下载或替换。
+
+DD 的确切升级清单见 [trial.8 正式 UI 升级清单](TRIAL8-UPGRADE-CHECKLIST.md)。仍需实际宿主上的正式更新确认，以及独立候选启用/恢复 Video 试用的明确授权；无需再请 JJ 定同一句或请 QQ 重审已过的相同安全增量。FFmpeg 下载仍为单独受限动作。#154 未进包等产品限制不被上述有限安全复核消除。
 
 ## 冻结原包与文档 head 分开
 
