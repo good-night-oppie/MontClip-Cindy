@@ -14,7 +14,7 @@ const RULES = {
   project: 'Times are seconds on the timeline. To cut a range out of the edit (e.g. "删掉 1:00–1:30"), call fablecut_patch_project with {ops:[{op:"extract", from:60, to:90}]} — extract closes the gap, lift leaves it. Read the timeline with fablecut_get_project {compact:true} first and pass its revision as baseRevision. Every edit becomes one step of the open editor\'s undo stack: montclip_undo / montclip_redo take it back or put it back. Import a large local recording with fablecut_import_media {path, link:true} (no second copy on disk).',
   versions: 'fablecut_versions {action:"list"} lists checkpoints; {action:"save", name} makes one before a big edit; {action:"restore", version} goes back to one — what was there is saved as a version first. Restore only when the user asked.',
   audio: 'These change clip gain / keyframes / cuts in the open project; each is one undo step in the editor.',
-  speech: 'Transcription runs in the open editor tab (montclip_open_task_view) or headless. Captions are text clips timed to the words.',
+  speech: 'Transcription runs on this computer (the speech engine and the Paraformer zh model, after a VAD); the open editor tab or a headless one only relays it. Clips of a long recording are listened to in their windows only; mediaIds (or find over a whole replay) listens to all of it, minutes for hours. montclip_status says whether the engine and the model are installed here; when they are not, fablecut_transcribe says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING) — tell the user plainly, never fetch them yourself. Captions are text clips timed to the words.',
   export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_status says whether it is installed.',
 };
 const categoryOf = (name) => Object.keys(CATEGORIES).find((c) => CATEGORIES[c].includes(name)) || 'other';
@@ -289,12 +289,49 @@ function openEditorFailed(error, code) {
   logProblem(code || 'TASK_VIEW_FAILED', error);
   return '没能打开剪辑器。再点一次试试。';
 }
+/* 听写 on the status card (JJ's final words, 2026-11-05): the label and its hover hint, the state, and under an
+   unfinished state a small line on what it is for. The plugin's pages are Chinese for now; the English is kept for when
+   they follow the interface language. The model's size is the worker's modelMb: the manifest's bytes through the
+   engine's own aboutMb (asr-status.js), so nothing here rounds or writes a size. */
+var ASR_CARD = {   // var: the tests read it from main.js's own scope
+  zh: { label: '听写', hint: '把说的话转成文字', ready: '已装好', model: (mb) => '还没装模型（约 ' + mb + ' MB）', engine: '还没装听写程序',
+    note: '做字幕、按说过的话找位置时要用；剪辑和导出不受影响。' },
+  en: { label: 'Transcription', hint: 'Turns speech into text', ready: 'Installed', model: (mb) => 'Model not installed (about ' + mb + ' MB)',
+    engine: 'Transcription program not installed', note: 'Needed for captions and for finding a moment by what was said. Editing and exporting still work.' },
+};
+const asrText = (lang) => ASR_CARD[lang === 'en' ? 'en' : 'zh'];
+function asrLine(a, lang) {
+  const t = asrText(lang);
+  if (!a) return '—';
+  if (a.engine && a.model) return t.ready;
+  return a.engine ? t.model(a.modelMb) : t.engine;
+}
+/** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
+function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
+/** The status card's values, in order (the card and its height estimate read the same list). */
+function statusRows(s, editorOpen) {
+  const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
+  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
+}
+const NOTE_STYLE = 'font-size:12px;line-height:1.45;color:var(--text-secondary,#6b6b66);margin-top:2px';
+/** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
+ *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
+function statusCardHeight(s, editorOpen) {
+  const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
+  const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
+  const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
+  return Math.min(900, Math.max(120, 24 + 26 + rows + note + (editorOpen ? 0 : 42) + 6));
+}
 function statusCard(s, editorOpen) {
-  const row = (k, v) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);min-width:8.5em">' + esc(k) + '</span><span>' + esc(v) + '</span></div>';
+  // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
+  // the column, and wrapped at 280 px), so the values form one column
+  const row = (k, v, { hint = '', note = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
     row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr) }) +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -343,8 +380,12 @@ const HANDLERS = {
     let editor = null;
     try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: String(e.message) }; }
     const open = !!(editor && editor.status === 200);
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name }, open), height: open ? 120 : 160 });
-    return { engine: publicStart(s), editorTab: editor && editor.status === 200 ? editor
+    let asr = null;
+    try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
+    return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+      note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
+      editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
   },
   async list_tools(args) {

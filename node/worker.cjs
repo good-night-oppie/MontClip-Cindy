@@ -15,7 +15,7 @@ const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
-  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob } = require("./lib.cjs");
+  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb } = require("./lib.cjs");
 
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
 
@@ -25,6 +25,11 @@ const DATA = path.resolve(process.env.MONTCLIP_CINDY_DATA || path.join(os.homedi
 const FOLDERS_FILE = path.join(DATA, "cindy-export-folders.json");   // which folder each export went into (打开文件夹)
 const PLATFORM = `${process.platform}-${process.arch}`;
 const FFMPEG_DIR = path.join(DATA, "ffmpeg", PLATFORM);
+/* On-device transcription (P8): the engine (sherpa-onnx-node and its native part for this system) and the VAD go in
+   DATA/asr, the speech models in DATA/asr-models — the data folder, which a plugin update never replaces. The plugin
+   does not fetch them; until they are there the engine says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING). */
+const ASR_DIR = path.join(DATA, "asr"), ASR_MODELS_DIR = path.join(DATA, "asr-models");
+const ASR_NATIVE = "sherpa-onnx-" + (process.platform === "win32" ? "win" : process.platform) + "-" + process.arch;
 // the Windows app's own pinned-build manifest and installer (build.cjs copies them in)
 const fetchFfmpeg = () => require(path.join(APP, "desktop", "fetch-ffmpeg.cjs"));
 const ffmpegManifest = () => require(path.join(APP, "desktop", "ffmpeg-manifest.json"));
@@ -77,6 +82,7 @@ async function boot() {
     // only the pinned LGPL build fetched into the data folder (montclip_install_ffmpeg); never one from PATH
     MONTCLIP_FFMPEG_PACKAGED: "1", MONTCLIP_FFMPEG_DIR: FFMPEG_DIR,
     MONTCLIP_FFMPEG_REMEDY: "In Cindy, install it from the MontClip editor tab's banner, or ask the chat to run montclip_install_ffmpeg.",
+    MONTCLIP_ASR_DIR: ASR_DIR, MONTCLIP_ASR_MODELS_DIR: ASR_MODELS_DIR,
   });
   require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
   started = { origin: `http://127.0.0.1:${port}`, port, token };
@@ -126,6 +132,21 @@ const METHODS = {
     if (!["undo", "redo", "seek", "state"].includes(p.cmd)) throw Object.assign(new Error("cmd must be undo, redo, seek or state"), { code: -32602 });
     const r = await api("POST", "/api/ui/command", { cmd: p.cmd, t: p.t, session: p.session, project: p.project });
     return { status: r.status, ...r.body };
+  },
+  /* Whether transcription can run here: the engine (with its native part for this system and the VAD) and the speech
+     model, as the engine sees them, and where they go. */
+  async "montclip/asr-status"() {
+    await start();
+    const r = await api("GET", "/api/asr/status");
+    const b = r.status === 200 && r.body ? r.body : {};
+    const ready = (x) => !!(x && x.ready);
+    const native = fs.existsSync(path.join(ASR_DIR, "engine", "node_modules", ASR_NATIVE, "package.json"));
+    // the speech model's size, for the card's 「约 … MB」: the Paraformer files' bytes in the engine's desktop/asr-manifest.json,
+    // through the engine's own aboutMb (lib.cjs aboutMbFrom)
+    let modelMb = null;
+    try { modelMb = asrModelMb(JSON.parse(fs.readFileSync(path.join(APP, "desktop", "asr-manifest.json"), "utf8")), aboutMbFrom(APP)); } catch { }
+    return { engine: ready(b.engine) && ready(b.vad) && native, model: ready(b.asr), punct: ready(b.punct), native: ASR_NATIVE, modelMb,
+      engineDir: ASR_DIR, modelsDir: ASR_MODELS_DIR, missing: (b.asr && b.asr.missing) || [] };
   },
   /* ffmpeg for export and noise reduction: what to fetch (main.js downloads it with cindy.downloads) … */
   async "montclip/ffmpeg-spec"() {
