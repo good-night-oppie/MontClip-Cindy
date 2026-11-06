@@ -1,5 +1,9 @@
 # trial.9 MediaPipe 资源安全前置与文案清单（2026-11-06）
 
+**当前阻塞：add981df 源补丁 CI 失败，不可放行移植。** 已直接核验 [run 42187166174](https://github.com/good-night-oppie/MontClip/actions/runs/42187166174) 的 head 为 `add981df73c0599fa7859ada636fd78effc26e8a`：Tests(Node18/20/22)及Tests(Windows,Node22)四项均 FAILURE，失败步骤均为测试套件；Syntax & sanity、Release readiness两项 SUCCESS。根因尚未由本任务确认，不猜测失败是环境问题，也不用上游本地通过数字覆盖CI失败。原作者已接手排障，本任务只读准备，不重复下载、不并行改其源码。
+
+恢复依赖顺序：**原作者修正SHA → 核该SHA实际CI与QQ审查/JJ文案 → 重生成并核对最小移植diff → 候选引擎受影响验证 → 新原包**。下文add981df补丁及9资源清单仅为待修正的准备快照，不能直接应用；收到修正SHA后需核新旧差异及是否改变资源字节/hash/许可，不默认为文档修订或等价实现。冻结trial.9继续保持原包与限制。
+
 **硬依赖：主仓 #154 资源锁定补丁的当前 head 审查/JJ文案 → 候选最小移植与验证 → 主播交付。** 主仓是唯一实现方，本任务不并行写同一加载器。源码输入已到：远端核验 `add981df73c0599fa7859ada636fd78effc26e8a`，父提交 `b783bd36cc38adbdf67333786d2f3c09ea38c287`，9资源清单、真实字节审计及许可限制已读。当前 head 的 QQ 核查通知已入队不等于批准；本轮 GitHub reviews 返回空列表，未取得当前批准，因此不移植、不重打 trial.9。JJ新增提示及此前未定稿文字仍待，不再写“源码输入未到”。
 
 ## add981df 可执行移植准备（尚未应用）
@@ -31,7 +35,7 @@
 - 中：AI 抠像文件未能完成下载和校验，已停止加载。请关闭再开启 AI 抠像重试。
 - 英：AI background removal files could not be loaded and verified. Loading stopped. Turn AI background removal off and on again to retry.
 
-这是 add981df 的新草稿，将替代下文记录的无key英文失败toast；等待JJ，不能写成已定稿。下文旧17key表继续准确描述冻结trial.9。当前可完成的是映射、包路径规则核对、资源清单和验证步骤准备；实际移植与新包阻塞于当前head QQ审查及JJ所需定稿。
+这是 add981df 的新草稿，将替代下文记录的无key英文失败toast；等待JJ，不能写成已定稿。下文旧17key表继续准确描述冻结trial.9。当前可完成的是映射、包路径规则核对、资源清单和验证步骤准备；实际移植与新包首先阻塞于当前源CI失败，之后仍需核修正head的QQ审查及JJ所需定稿。
 
 [QQ review 5797240147](https://github.com/good-night-oppie/MontClip-Cindy/pull/13#pullrequestreview-5797240147) 已直接读回：COMMENTED，绑定文档head e5193751 / engine fa9cd139；确认仅文档差异使结论适用于 SOURCE fcd2279 的 trial.9。允许独立测试电脑试用，出现抠像下载提示选“先不用”（评论称“不下载”，当前实际按钮为“先不用”）。不得交主播、替换现用或据此合并；不是本任务安装/启用授权。非 AI 抠像功能的独立试用不依赖此补丁，仍按各自授权/现场条件执行。
 
