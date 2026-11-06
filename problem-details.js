@@ -4,7 +4,7 @@
 
    The page never shows a raw error or a code: it says what happened and what she can do (app.js showProblem). The
    〔复制问题信息〕 button copies copyLine(): the time, the code and the raw error, scrubbed — a path is cut to its file
-   name (the folders may carry her user name), and keys and tokens are removed. The console keeps logLine(), raw.
+   name (the folders may carry her user name), and keys and tokens are removed. The console uses the same scrubbed detail.
    Viewer names and uids do not occur in the errors this is used for. Pure; browser global MontClipProblem, and a
    CommonJS module for the tests. */
 (function (root) {
@@ -27,10 +27,10 @@
     return s;
   }
   const stamp = (at) => (at instanceof Date ? at : new Date()).toISOString();
-  /** The line for the console: everything, as it came. */
+  /** The console uses the same redaction as copied diagnostics. */
   function logLine(problem, at) {
     const p = problem || {};
-    return `[MontClip] ${stamp(at)} ${p.code || "UNKNOWN"}: ${String(p.error == null ? "" : p.error)}`;
+    return `[MontClip] ${stamp(at)} ${/^[A-Z0-9_-]{1,64}$/.test(p.code || "") ? p.code : "UNKNOWN"}: Operation failed.`;
   }
   /** The line the button copies: the same line, scrubbed. */
   function copyLine(problem, at) {

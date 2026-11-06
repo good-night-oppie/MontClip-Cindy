@@ -22,7 +22,8 @@ const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb } = require("./lib.cjs");
 
-for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
+const safeLog = require("./safe-log.cjs");
+for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(safeLog.consoleLine(k));
 
 const APP = path.resolve(process.env.MONTCLIP_CINDY_APP || path.join(__dirname, "app"));
 // the plugin's work lives in the user's home, never inside the plugin (an update replaces the plugin folder)
@@ -81,7 +82,7 @@ function ffmpegState() {
 }
 
 const reply = (m) => process.stdout.write(JSON.stringify(m) + "\n");
-const note = (entry) => process.stderr.write("[montclip] " + JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+const note = (entry) => process.stderr.write(safeLog.event(entry));
 
 
 let started = null, starting = null;   // the running engine: {origin, port, token, tools, callTool, …}
@@ -186,9 +187,22 @@ const METHODS = {
     const spec = ffmpegSpec(ffmpegManifest(), PLATFORM);
     return { ...spec, state: ffmpegState(), running: started ? started.ffmpeg : null };
   },
-  /* … and installing what was downloaded: params.downloads.archive is the host's file, read before this request
-     ends. The engine read its ffmpeg when it loaded, so a running one restarts (the next request starts it again;
-     the editor tab follows the new address and keeps its undo history). */
+  async "montclip/ffmpeg-refresh"() {
+    let engine = null;
+    if (started) {
+      try {
+        const r = await api("POST", "/api/ffmpeg/detect");
+        if (r.status !== 200 || !r.body || typeof r.body.state !== "string") throw new Error("invalid detection response");
+        engine = r.body;
+        started.ffmpeg = ffmpegState();
+      } catch {
+        throw Object.assign(new Error("FFmpeg was installed, but the engine could not refresh its tool state. Use the editor's detect action to retry."), {code:"FFMPEG_REFRESH_FAILED"});
+      }
+    }
+    return { state: ffmpegState(), restarting: false, engine };
+  },
+  /* Install the host's verified archive, then use the engine's existing runtime detection.
+     Do not restart: the open editor can have pending project and undo-stack writes. */
   async "montclip/ffmpeg-install"(p) {
     const spec = ffmpegSpec(ffmpegManifest(), PLATFORM);
     if (!spec.supported) throw Object.assign(new Error("there is no pinned ffmpeg build for " + PLATFORM), { code: "UNSUPPORTED_PLATFORM" });
@@ -214,9 +228,7 @@ const METHODS = {
       throw e;
     }
     note({ event: "ffmpeg-installed", version: out.version });
-    const restarting = !!started;
-    if (restarting) setTimeout(stopEngine, 300);
-    return { ...out, state: ffmpegState(), restarting };
+    return { ...out, ...await METHODS["montclip/ffmpeg-refresh"]() };
   },
   /* Export (main.js montclip_export): start a job in the engine (the open editor tab, else headless), report it, and
      copy what it made into the folder the user picked. */
@@ -327,7 +339,7 @@ function dispatch(method, params) {
   return result;
 }
 
-/* Leaving (Cindy closed our stdin, or ffmpeg was just installed): the engine's own shutdown runs first — it stops the
+/* Leaving (Cindy closed our stdin): the engine's own shutdown runs first — it stops the
    ffmpeg each running export spawned (stdin closed, then killed by its handle) and deletes the half-finished files,
    then exits within ~4 s (server.js shutdown). P11: an export's ffmpeg must never outlive the worker. */
 let leaving = false;
@@ -348,6 +360,6 @@ readline.createInterface({ input: process.stdin }).on("close", stopEngine).on("l
   try { reply({ jsonrpc: "2.0", id: req.id, result: await dispatch(req.method, req.params || {}) }); }
   catch (e) {
     note({ event: "error", method: req.method, message: String(e && e.message) });
-    reply({ jsonrpc: "2.0", id: req.id, error: { code: typeof e.code === "number" ? e.code : -32000, message: String((e && e.message) || e), data: typeof e.code === "string" ? { code: e.code, ...(Number.isFinite(e.need) ? { need: e.need } : {}) } : undefined } });
+    reply({ jsonrpc: "2.0", id: req.id, error: { code: typeof e.code === "number" ? e.code : -32000, message: "MontClip operation failed; inspect the error code.", data: typeof e.code === "string" ? { code: e.code, ...(Number.isFinite(e.need) ? { need: e.need } : {}) } : undefined } });
   }
 });

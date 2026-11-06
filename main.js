@@ -75,7 +75,7 @@ function installFfmpeg(session=null) {
   installing = (async () => {
     const spec = await node('montclip/ffmpeg-spec', {session:installingSession});
     if (!spec.supported) return { error: 'MontClip has no pinned ffmpeg for ' + spec.platform, code: 'UNSUPPORTED_PLATFORM' };
-    if (spec.state === 'downloaded') return { installed: true, already: true, version: spec.version };
+    if (spec.state === 'downloaded') { const refreshed = await node('montclip/ffmpeg-refresh', {session}); return { installed: true, already: true, version: spec.version, engine: refreshed.engine }; }
     if (typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
       return { error: 'This Cindy cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
     channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'queued' });
@@ -84,8 +84,8 @@ function installFfmpeg(session=null) {
     if (!d.ok) {
       // Cindy reports a failed download without a code (downloadSlot.ts L309–316); its progress said whether it was cancelled
       const code = d.errorCode || (lastDownloadPhase === 'cancelled' ? 'CANCELLED' : 'DOWNLOAD_FAILED');
-      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code, message: d.message || d.errorCode });
-      return { error: d.message || d.errorCode || 'download failed', code };
+      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code, message: 'Tool download failed. Please retry or report the error code.' });
+      return { error: 'Tool download failed. Please retry or report the error code.', code };
     }
     channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'installing' });
     try {
@@ -94,8 +94,8 @@ function installFfmpeg(session=null) {
       return { download: { bytes: d.bytes, sha256: d.sha256, fromCache: d.fromCache }, install: out };
     } catch (e) {
       if (CHECK_FAILED.includes(e.code)) { checkFailures++; retryStamp = Date.now().toString(36); }
-      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: String(e.message || e) });
-      return { error: String(e.message || e), code: e.code || 'INSTALL_FAILED', ...(e.need ? { need: e.need } : {}) };
+      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: 'MontClip operation failed. Please retry or report the error code.' });
+      return { error: 'MontClip operation failed. Please retry or report the error code.', code: e.code || 'INSTALL_FAILED', ...(e.need ? { need: e.need } : {}) };
     }
   })().finally(() => { installing = null; installingSession=null; });
   return installing;
@@ -189,11 +189,11 @@ function whyText(code, message, lang) {
   return t.why[code] || t.why.OTHER;
 }
 /* A raw error never leaves this computer (Deja, 2026-11-04): the tool result goes through the AI service, so it carries
-   only the plain sentence and the code. The whole error goes to the log; when she clicks 〔复制问题信息〕 on the card, the
+   only the plain sentence and the code. The log retains only the error code; when she clicks 〔复制问题信息〕 on the card, the
    task page shows the sentence and copies it for her (scrubbed there, problem-details.js). */
 function logProblem(code, error) {
   if (error == null || !String(error).trim()) return;
-  console.warn('[MontClip] ' + new Date().toISOString() + ' ' + (code || 'UNKNOWN') + ': ' + String(error));
+  console.warn('[MontClip] ' + new Date().toISOString() + ' ' + (code || 'UNKNOWN') + ': ' + 'Operation failed; see error code.');
 }
 /** What the tool result says about a failed export: the card's plain sentence and the code — nothing raw. */
 function copyFailureText(c, lang) {
@@ -418,7 +418,7 @@ const HANDLERS = {
     const bound = await forTask(msg).catch(() => null);
     const s = await node('montclip/start', {session:taskOf(msg)});
     let editor = null;
-    try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: String(e.message) }; }
+    try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: 'MontClip operation failed.' }; }
     const open = !!(editor && editor.status === 200);
     let asr = null;
     try { asr = await node('montclip/asr-status', {session:taskOf(msg)}); } catch (e) { asr = null; }
@@ -452,7 +452,7 @@ const HANDLERS = {
     try {
       return await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
     } catch (e) {
-      return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
+      return { error: 'MontClip operation failed.', inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
   },
   async montclip_candidate_undo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'undo' }); },
@@ -599,7 +599,7 @@ cindy.onHostMessage(async function (msg) {
     const result = await fn(msg.args || {}, msg);
     await cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result });
   } catch (e) {
-    await cindy.send({ type: 'tool-result', callId: msg.callId, ok: false, errorCode: e.code || 'FAILED', message: String(e.message || e) });
+    await cindy.send({ type: 'tool-result', callId: msg.callId, ok: false, errorCode: e.code || 'FAILED', message: 'MontClip operation failed. Please retry or report the error code.' });
   }
 });
 

@@ -9,7 +9,7 @@ function failureText(head, error, code) {
   const raw = error == null ? '' : String(error).trim();
   if (!raw) return { text: head + '关掉这个页签再打开试试。', problem: null };
   const problem = { code: code || 'UNKNOWN', error: raw };
-  console.warn(window.MontClipProblem ? MontClipProblem.logLine(problem) : '[MontClip] ' + raw);   // the whole of it: the log
+  console.warn(window.MontClipProblem ? MontClipProblem.logLine(problem) : '[MontClip] Operation failed.');   // no raw fallback
   // draft, waiting for JJ: #112's sentence, with the copy button in place of the raw line
   return { text: head + '关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。', problem };
 }
@@ -216,8 +216,8 @@ function copyButton(box, problem) {
     place(at(a.url));
     offerFfmpeg();
     /* While the page is open the engine must stay up: asking keeps the worker from going idle, and when it was
-       restarted (another port or a new token) the frame follows it — the editor keeps its undo history on the
-       engine, so the reload loses nothing. */
+       restarted (another port or a new token) the frame follows it. Only acknowledged saved edits and undo stacks
+       survive a restart; an unplanned shutdown can still lose pending browser writes. */
     setInterval(async () => {
       try { await fetch('/wake'); } catch (e) { }
       const b = await ask('editor');
