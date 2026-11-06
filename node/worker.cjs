@@ -36,15 +36,20 @@ function keepResult(job) {
   try { fs.writeFileSync(temp, JSON.stringify(entries.slice(-200)), {flag:"wx"}); fs.renameSync(temp, RESULTS_FILE); }
   finally { fs.rmSync(temp, {force:true}); }
 }
-async function exportJob(id) {
+function checkExportTask(job, session) {
+  if ((job.session || null) !== (session || null)) throw Object.assign(new Error("this export belongs to another task"), {code:"EXPORT_TASK_MISMATCH"});
+  return job;
+}
+async function exportJob(id, session) {
   const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(id || "")));
   if (r.status === 200) {
+    checkExportTask(r.body, session);
     if (r.body.status === "done") try { keepResult(r.body); } catch (e) { note({event:"export-result-not-kept",id:r.body.id,code:e.code}); }
     return r.body;
   }
   if (r.status === 404) {
     const saved = savedResults().find(x => x && x.id === id && x.status === "done");
-    if (saved) return saved;
+    if (saved) return checkExportTask(saved, session);
     throw Object.assign(new Error("no such export job"), {code:"NO_JOB"});
   }
   throw Object.assign(new Error("could not read export job"), {code:"NODE_REQUEST_FAILED"});
@@ -223,7 +228,7 @@ const METHODS = {
   },
   async "montclip/export-job"(p) {
     await start();
-    const r = {body: await exportJob(String(p.id || ""))};
+    const r = {body: await exportJob(String(p.id || ""), p.session)};
     // why an export ended without its file goes to Cindy's log once (P11: the reason was nowhere to be found afterwards)
     if ((r.body.status === "failed" || r.body.status === "cancelled") && !endedNoted.has(r.body.id)) {
       endedNoted.add(r.body.id);
@@ -234,13 +239,14 @@ const METHODS = {
   },
   async "montclip/export-cancel"(p) {
     await start();
+    await exportJob(String(p.id || ""), p.session);
     const r = await api("POST", "/api/export/job/cancel?id=" + encodeURIComponent(String(p.id || "")));
     if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || "no such export job"), { code: "NO_JOB" });
     return r.body;
   },
   async "montclip/export-deliver"(p) {
     await start();
-    const r = {body: await exportJob(String(p.id || ""))};
+    const r = {body: await exportJob(String(p.id || ""), p.session)};
     if (r.body.status !== "done") throw Object.assign(new Error("the export is not finished"), {code:"NOT_DONE"});
     const files = exportFiles(r.body, path.join(DATA, "exports"));
     if (!files.length) throw Object.assign(new Error("the export made no file"), { code: "NO_FILE" });
@@ -276,6 +282,7 @@ const METHODS = {
   async "montclip/open-folder"(p) {
     const exportsDir = path.join(DATA, "exports");
     fs.mkdirSync(exportsDir, { recursive: true });
+    if (p.job != null) await exportJob(String(p.job), p.session);
     const picked = p.job != null ? folderOfJob(FOLDERS_FILE, p.job) : null;
     const target = p.folder === "exports" && p.job == null ? exportsDir : picked;
     if (!target) throw Object.assign(new Error("only the exports folder or the folder an export went into can be opened"), { code: "FOLDER_NOT_ALLOWED" });

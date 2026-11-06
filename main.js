@@ -365,7 +365,7 @@ async function runFollow(f, job) {
   let misses = 0;
   while (job.status === 'pending' || job.status === 'running') {
     await sleep(1500);
-    try { job = await node('montclip/export-job', { id: f.id }); misses = 0; }
+    try { job = await node('montclip/export-job', { id: f.id, session: f.session }); misses = 0; }
     catch (e) {
       // the engine has forgotten the job (it restarted): the export is gone with it
       if (e.code === 'NO_JOB' || ++misses >= NODE_MISSES) throw Object.assign(new Error(e.message), { code: e.code === 'NO_JOB' ? 'NO_JOB' : 'NODE_REQUEST_FAILED' });
@@ -387,7 +387,7 @@ async function runFollow(f, job) {
   if (f.dir) {
     f.phase = 'copy';
     sendCard(f.callId, { phase: 'copy', folder: f.folder });
-    try { f.files = (await node('montclip/export-deliver', { id: f.id, dir: f.dir }, { timeoutMs: 60000, maxTotalMs: 900000 })).files; }
+    try { f.files = (await node('montclip/export-deliver', { id: f.id, dir: f.dir, session: f.session }, { timeoutMs: 60000, maxTotalMs: 900000 })).files; }
     catch (e) {
       await sleep(1000); logProblem(e.code, e.message);
       f.phase = 'copyFailed'; f.failure = { phase: 'copyFailed', code: e.code, reason: e.message, job: f.id };
@@ -462,15 +462,16 @@ const HANDLERS = {
   async montclip_export(args, msg) {
     if (args.cancel != null) {
       const id = String(args.cancel), f = exportFollows.get(id);
-      await node('montclip/export-cancel', { id });
+      await node('montclip/export-cancel', { id, session: taskOf(msg) });
       return f ? Object.assign(exportView(f), { cancelling: true }) : { job: id, cancelling: true };
     }
     if (args.job != null) {
       const id = String(args.job), f = exportFollows.get(id);
+      if (f && f.session !== taskOf(msg)) throw Object.assign(new Error('这次导出属于另一个任务，请回到原任务查看。'), {code:'EXPORT_TASK_MISMATCH'});
       if (f) return exportView(f);
       // not followed here (the plugin was reloaded): what the engine knows; a file it finished stays in exports/
       let job;
-      try { job = await node('montclip/export-job', {id}); }
+      try { job = await node('montclip/export-job', {id, session: taskOf(msg)}); }
       catch (e) { if (e.code !== 'NO_JOB') throw e; const c = {phase:'failed',code:'NO_JOB',job:id}; sendCard(msg.callId,c); return {job:id,status:'failed',...plainFailure(c)}; }
       const o = { job: id, status: job.status === 'pending' ? 'running' : job.status, progress: job.progress || 0, phase: job.status };
       if (job.status === 'failed') { logProblem(job.code || 'EXPORT_FAILED', job.error); Object.assign(o, plainFailure({ phase: 'failed', stage: 'job', code: job.code, progress: job.progress, reason: job.error })); }
@@ -533,8 +534,8 @@ cindy.onHostMessage(async function (msg) {
     if (!c || c.phase !== 'still' || !c.job) return;
     sendCard(msg.callId, { phase: 'running', folder: c.folder });
     try {
-      const job = await node('montclip/export-job', { id: c.job });
-      await followExport(job, { ...c, callId: msg.callId }).finished;
+      const job = await node('montclip/export-job', { id: c.job, session: msg.sessionId || null });
+      await followExport(job, { ...c, session: msg.sessionId || null, callId: msg.callId }).finished;
     } catch (e) {
       logProblem(e.code, e.message);
       sendCard(msg.callId, e.code === 'NO_JOB' ? {phase:'failed',code:'NO_JOB',job:c.job} : c);
@@ -567,7 +568,7 @@ cindy.onHostMessage(async function (msg) {
         const folder = picked.name || 'folder';
         sendCard(msg.callId, { phase: 'copy', folder });
         try {
-          const files = (await node('montclip/export-deliver', { id: c.job, dir: picked.path }, { timeoutMs: 60000, maxTotalMs: 900000 })).files;
+          const files = (await node('montclip/export-deliver', { id: c.job, dir: picked.path, session: msg.sessionId || null }, { timeoutMs: 60000, maxTotalMs: 900000 })).files;
           await sleep(1000);
           sendCard(msg.callId, { phase: 'done', folder, dir: picked.path, job: c.job, files });
         } catch (e) { logProblem(e.code, e.message); await sleep(1000); sendCard(msg.callId, { phase: 'copyFailed', code: e.code, reason: e.message, job: c.job }); }
@@ -579,7 +580,7 @@ cindy.onHostMessage(async function (msg) {
     const c = exportCards.get(msg.callId);
     if (!c) return;
     // the worker is told which export (its job id), never a path; it looks up where that export went
-    const ask = msg.actionId === 'open-folder:picked' ? (c.phase === 'done' && c.dir && c.job ? { job: c.job } : null) : { folder: 'exports' };
+    const ask = msg.actionId === 'open-folder:picked' ? (c.phase === 'done' && c.dir && c.job ? { job: c.job, session: msg.sessionId || null } : null) : { folder: 'exports' };
     let openFailed = null;
     try {
       if (!ask) throw Object.assign(new Error('this export was not saved into a folder of its own'), { code: 'NO_FOLDER' });
