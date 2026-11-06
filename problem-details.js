@@ -33,7 +33,9 @@
     "EPERM", "ENOENT", "NO_EDITOR", "NO_JOB", "NO_FILE", "NOT_DONE",
     "EXPORT_REFUSED", "EXPORT_TASK_MISMATCH", "EXPORT_PROJECT_CHANGED",
     "ASR_ENGINE_MISSING", "ASR_MODEL_MISSING", "ASR_CANCELLED",
-    "CHILD_EXIT_UNCONFIRMED", "TOOL_NOT_FOUND", "PROTOCOL_ERROR"
+    "CHILD_EXIT_UNCONFIRMED", "TOOL_NOT_FOUND", "PROTOCOL_ERROR",
+    "EXPORT_FAILED", "UNPACK_FAILED", "TASK_LIMIT", "FOLDER_NOT_ALLOWED",
+    "NO_FOLDER", "NO_ARCHIVE", "NO_PINNED_BYTES"
   ]);
   /** Logs and copied diagnostics contain time and a controlled code, never raw detail. */
   function logLine(problem, at) {
