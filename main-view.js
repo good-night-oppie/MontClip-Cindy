@@ -67,7 +67,13 @@
         b = document.createElement('button'); b.type = 'button'; b.textContent = '在任务中打开';
         b.addEventListener('click', async () => {
           const r = await ask('open-task', { session: p.task });
-          if (!r.ok) fail(V.FAILED.openTask(r.message || r.errorCode || r.error, r.errorCode || r.code));
+          const result = V.taskOpenResult(r, p.task);
+          const status = $('status');
+          status.textContent = result.text;
+          status.dataset.openState = result.state;
+          status.className = result.state === 'requested' ? 'status' : 'status error';
+          $('statusCopy').hidden = true; // fixed navigation copy, never raw host errors
+          $('statusCopy').textContent = '';
         });
       }
       $('projects').appendChild(li(p.name, p.meta + (p.task ? '' : ' · 没有对应的任务'), b));
