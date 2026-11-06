@@ -77,7 +77,13 @@ No reviewable lyric commit was found; this comparison does not prove every other
 
 ## Review and installation gates
 
-Review Inbox SOP was read at jj-agent `727c89e56ad7b4629c562dc6bf1e1c05662fb909`. Independent repository is not configured for the Inbox; no config/service mutation attempted. Draft PRs are excluded by the SOP anyway. Request GoodNightOppie and mark `@QQ 请审`; this does not mean the PR has entered Inbox or received approval. QQ/Rea review, VV/JJ UI/product acceptance, and Deja decision remain outstanding. All required approvals remain pending; no self-merge.
+Review Inbox SOP was read at jj-agent `727c89e56ad7b4629c562dc6bf1e1c05662fb909`; QQ subsequently corrected the submission wording. For future submissions the first line is plain “QQ 请审” (no @ and no code formatting), and requesting reviewer GoodNightOppie is required. The body marker is for people, not the Inbox intake condition. Existing inline-code markers need not be rewritten.
+
+Draft PRs can already be in the Inbox, but are not automatically agent-reviewed while Draft; explicitly assigned teammate pre-review can proceed. Do not conflate intake, pre-review, formal approval and merge authorization.
+
+Separate configuration limitation: this independent repository was not in the observed Inbox repository configuration. This task has not changed configuration or restarted its service, and does not claim intake based only on a reviewer request. QQ/Rea review, VV/JJ UI/product acceptance, Deja's engineering decision and all required role approvals remain outstanding. Current-head checks and approval gates are unchanged; no self-merge.
+
+Final handoff rebuild: the correction after `ad4eff6ea7bb2352c670f1a3c22c58e1885130d7` changes only this document. The plugin 35/35 tests, engine 63/63 focused tests, 4/4 reload regressions, 8/8 CI checks and synthetic MP4 result belong to that tested source revision and its unchanged runtime files. Rebuild from the new clean HEAD and re-pack only dist/montclip; verify every package entry against the prior package, allowing only SOURCE.json to change. The final receipt supplies the new full plugin SHA and package SHA256. Linux CI smoke passed, while Europa native runtime, real Cindy UI, actual exFAT/FAT32 and the Cindy-downloaded LGPL toolchain remain unverified. FLV direct-timeline export failed with presented frame timeout, and preview.4 lyric additions remain absent. This candidate is not cleared to enter formal seven-item video acceptance.
 
 Target Europa Cindy version/source commit could not be established from the supplied author copy, so working-card persistence and host integration are unverified. Existing minCindyVersion is preserved; no new host API is introduced. The referenced `.cursor/rules/agentic-coding-steps.mdc` is absent in this checkout; this document records the integration execution and validation evidence instead of claiming that unavailable workflow ran.
 
