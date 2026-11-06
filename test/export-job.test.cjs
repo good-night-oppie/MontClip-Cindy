@@ -1,6 +1,6 @@
 "use strict";
 /* P11 (europa, 2026-11-05): Cindy gives a plugin tool call at most 330 s, and an export took longer, so the first
-   montclip_export call timed out while the export carried on. Exports now follow JJ's P2 rule: the tool answers at once
+   montclip_candidate_export call timed out while the export carried on. Exports now follow JJ's P2 rule: the tool answers at once
    with the job, the same tool reports it, and it is done only when the file is finished and in its folder.
    main.js runs here against a fake host whose engine job moves only when the test says so. */
 const test = require("node:test"), assert = require("node:assert/strict");
@@ -56,15 +56,15 @@ function host() {
 }
 const methods = (h, m) => h.calls.filter((c) => c.method === m);
 
-test("montclip_export answers with the job while the export is still running", { timeout: 10000 }, async (t) => {
+test("montclip_candidate_export answers with the job while the export is still running", { timeout: 10000 }, async (t) => {
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
   h.job.status = "running"; h.job.progress = 0.1;
-  const r = await h.call("montclip_export", {});
+  const r = await h.call("montclip_candidate_export", {});
   assert.equal(r.ok, true);
   assert.equal(r.result.job, "x_job1", JSON.stringify(r.result));
   assert.equal(r.result.status, "running");
-  assert.match(r.result.hint, /montclip_export \{job:"x_job1"\}/);
+  assert.match(r.result.hint, /montclip_candidate_export \{job:"x_job1"\}/);
   // the card keeps showing it: still 'working' after the result
   await h.until(() => h.cards.some((c) => c.callId === "c1" && c.state === "working" && /正在导出 10%/.test(c.html)), "a progress card");
 });
@@ -73,18 +73,18 @@ test("{job} is not done until the engine has finished the file and it is copied 
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
   h.job.status = "running"; h.job.progress = 0.99;
-  await h.call("montclip_export", {});
-  let s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  await h.call("montclip_candidate_export", {});
+  let s = (await h.call("montclip_candidate_export", { job: "x_job1" })).result;
   assert.equal(s.status, "running");
   // the engine says done only after the .part file is renamed into place (server.js /api/export/end); the copy follows
   Object.assign(h.job, { status: "done", progress: 1, src: "/exports/demo.mp4", result: { outputs: [{ file: "demo.mp4", ok: true, report: { line: "ok" } }] } });
   await h.until(() => h.delivering(), "the copy to start");
-  s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  s = (await h.call("montclip_candidate_export", { job: "x_job1" })).result;
   assert.equal(s.status, "running", "copying into the folder is not done yet");
   assert.equal(s.phase, "copy");
   h.deliver();
   await h.until(() => h.cards.some((c) => c.state === "done" && /导出完成/.test(c.html)), "the done card");
-  s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  s = (await h.call("montclip_candidate_export", { job: "x_job1" })).result;
   assert.equal(s.status, "done");
   assert.deepEqual(s.files, ["demo.mp4"]);
 });
@@ -93,8 +93,8 @@ test("asked again while this task's export runs, it answers with the same job an
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
   h.job.status = "running";
-  await h.call("montclip_export", {});
-  const again = (await h.call("montclip_export", {})).result;
+  await h.call("montclip_candidate_export", {});
+  const again = (await h.call("montclip_candidate_export", {})).result;
   assert.equal(again.job, "x_job1");
   assert.equal(again.already, true);
   assert.equal(methods(h, "montclip/export-start").length, 1);
@@ -104,10 +104,10 @@ test("an export whose renderer was killed halfway reports failed, in plain words
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
   h.job.status = "running"; h.job.progress = 0.4;
-  await h.call("montclip_export", {});
+  await h.call("montclip_candidate_export", {});
   Object.assign(h.job, { status: "failed", error: "the headless browser exited before the export finished" });
   await h.until(() => h.cards.some((c) => c.state === "done" && /导出没有完成/.test(c.html)), "the failed card");
-  const s = (await h.call("montclip_export", { job: "x_job1" })).result;
+  const s = (await h.call("montclip_candidate_export", { job: "x_job1" })).result;
   assert.equal(s.status, "failed");
   assert.match(s.error, /导出到一半停了.*可以再导一次/);
   assert.doesNotMatch(s.error, /headless|browser/i, "never the raw error");
@@ -117,8 +117,8 @@ test("{cancel} stops the export in the engine", { timeout: 10000 }, async (t) =>
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
   h.job.status = "running";
-  await h.call("montclip_export", {});
-  const r = (await h.call("montclip_export", { cancel: "x_job1" })).result;
+  await h.call("montclip_candidate_export", {});
+  const r = (await h.call("montclip_candidate_export", { cancel: "x_job1" })).result;
   assert.equal(r.cancelling, true);
   assert.deepEqual(methods(h, "montclip/export-cancel").map((c) => c.params.id), ["x_job1"]);
   await h.until(() => h.cards.some((c) => c.state === "done" && /没有导出/.test(c.html)), "the cancelled card");
@@ -135,7 +135,7 @@ test("call_tool fablecut_export answers at once (wait:false); a {job} check pass
 
 test("an in-memory export follower cannot be queried from another task", async t => {
   const h=host(); t.after(()=>{h.job.status="cancelled";});
-  await h.call("montclip_export", {});
-  const denied=await h.call("montclip_export", {job:"x_job1"}, "task-2");
+  await h.call("montclip_candidate_export", {});
+  const denied=await h.call("montclip_candidate_export", {job:"x_job1"}, "task-2");
   assert.equal(denied.ok,false); assert.equal(denied.errorCode,"EXPORT_TASK_MISMATCH");
 });

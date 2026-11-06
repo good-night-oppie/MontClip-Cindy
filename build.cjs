@@ -27,7 +27,7 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 }
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
-for (const f of ["worker.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
+for (const f of ["worker.cjs", "engine-worker.cjs", "trial-paths.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
 fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({
   plugin: { repository: "https://github.com/good-night-oppie/MontClip-Cindy.git",
     commit: execFileSync("git", ["rev-parse", "HEAD"], { cwd: __dirname, encoding: "utf8" }).trim(),

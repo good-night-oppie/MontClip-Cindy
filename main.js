@@ -11,11 +11,11 @@ const CATEGORIES = {
   export: ['fablecut_export', 'fablecut_encode_profiles', 'fablecut_proxy'],
 };
 const RULES = {
-  project: 'Times are seconds on the timeline. To cut a range out of the edit (e.g. "删掉 1:00–1:30"), call fablecut_patch_project with {ops:[{op:"extract", from:60, to:90}]} — extract closes the gap, lift leaves it. Read the timeline with fablecut_get_project {compact:true} first and pass its revision as baseRevision. Every edit becomes one step of the open editor\'s undo stack: montclip_undo / montclip_redo take it back or put it back. Import a large local recording with fablecut_import_media {path, link:true} (no second copy on disk).',
+  project: 'Times are seconds on the timeline. To cut a range out of the edit (e.g. "删掉 1:00–1:30"), call fablecut_patch_project with {ops:[{op:"extract", from:60, to:90}]} — extract closes the gap, lift leaves it. Read the timeline with fablecut_get_project {compact:true} first and pass its revision as baseRevision. Every edit becomes one step of the open editor\'s undo stack: montclip_candidate_undo / montclip_candidate_redo take it back or put it back. Import a large local recording with fablecut_import_media {path, link:true} (no second copy on disk).',
   versions: 'fablecut_versions {action:"list"} lists checkpoints; {action:"save", name} makes one before a big edit; {action:"restore", version} goes back to one — what was there is saved as a version first. Restore only when the user asked.',
   audio: 'These change clip gain / keyframes / cuts in the open project; each is one undo step in the editor.',
-  speech: 'Transcription runs on this computer (the speech engine and the Paraformer zh model, after a VAD); the open editor tab or a headless one only relays it. Clips of a long recording are listened to in their windows only; mediaIds (or find over a whole replay) listens to all of it, minutes for hours. montclip_status says whether the engine and the model are installed here; when they are not, fablecut_transcribe says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING) — tell the user plainly, never fetch them yourself. Captions are text clips timed to the words.',
-  export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_status says whether it is installed. It answers at once with a job; check it with fablecut_export {job} until it is done (the file is finished only then), stop it with {cancel}. To save into a folder the user picks, use montclip_export instead (same job / cancel).',
+  speech: 'Transcription runs on this computer (the speech engine and the Paraformer zh model, after a VAD); the open editor tab or a headless one only relays it. Clips of a long recording are listened to in their windows only; mediaIds (or find over a whole replay) listens to all of it, minutes for hours. montclip_candidate_status says whether the engine and the model are installed here; when they are not, fablecut_transcribe says so (ASR_ENGINE_MISSING / ASR_MODEL_MISSING) — tell the user plainly, never fetch them yourself. Captions are text clips timed to the words.',
+  export: 'fablecut_export renders in the open editor tab and writes the file into the MontClip data folder (exports/). It needs the pinned ffmpeg: montclip_candidate_status says whether it is installed. It answers at once with a job; check it with fablecut_export {job} until it is done (the file is finished only then), stop it with {cancel}. To save into a folder the user picks, use montclip_candidate_export instead (same job / cancel).',
 };
 const categoryOf = (name) => Object.keys(CATEGORIES).find((c) => CATEGORIES[c].includes(name)) || 'other';
 
@@ -60,6 +60,7 @@ function publicStart(s) { const o = Object.assign({}, s); delete o.url; return o
 /* ffmpeg (export, noise reduction): the pinned LGPL build the Windows app bundles, ~160 MB from GitHub, fetched by
    cindy.downloads (given the SHA-256 and exact size) and unpacked by the worker, which measures the size and SHA-256 again and checks it is LGPL.
    One install at a time, whether the chat or the editor tab's banner asked. Progress goes to the plugin's pages. */
+let installingSession = null;
 let installing = null, lastDownloadPhase = null;
 /* Cindy keys its download cache by the download id, and its plugin manual (§4.12) has no call to drop a cached file or
    force a fresh download. So once a downloaded archive fails the worker's check, later attempts ask under a new id
@@ -67,34 +68,36 @@ let installing = null, lastDownloadPhase = null;
 const CHECK_FAILED = ["SIZE_MISMATCH", "SHA256_MISMATCH", "BAD_ARCHIVE"];
 let checkFailures = 0, retryStamp = "";
 const downloadId = (platform) => "ffmpeg-" + platform + (checkFailures ? "-r" + checkFailures + "-" + retryStamp : "");
-function installFfmpeg() {
-  if (installing) return installing;
+function installFfmpeg(session=null) {
+  if(!session)return Promise.resolve({error:"请在候选任务中安装工具。",code:"TASK_REQUIRED"});
+  if (installing) return session===installingSession ? installing : Promise.resolve({error:'另一个候选任务正在安装工具，请稍后重试。',code:'INSTALL_BUSY'});
+  installingSession=session;
   installing = (async () => {
-    const spec = await node('montclip/ffmpeg-spec');
+    const spec = await node('montclip/ffmpeg-spec', {session:installingSession});
     if (!spec.supported) return { error: 'MontClip has no pinned ffmpeg for ' + spec.platform, code: 'UNSUPPORTED_PLATFORM' };
     if (spec.state === 'downloaded') return { installed: true, already: true, version: spec.version };
     if (typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
       return { error: 'This Cindy cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
-    channel.postMessage({ type: 'ffmpeg-progress', phase: 'queued' });
+    channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'queued' });
     lastDownloadPhase = null;
     const d = await cindy.downloads.start({ id: downloadId(spec.platform), url: spec.url, sha256: spec.sha256, bytes: spec.bytes });
     if (!d.ok) {
       // Cindy reports a failed download without a code (downloadSlot.ts L309–316); its progress said whether it was cancelled
       const code = d.errorCode || (lastDownloadPhase === 'cancelled' ? 'CANCELLED' : 'DOWNLOAD_FAILED');
-      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code, message: d.message || d.errorCode });
+      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code, message: d.message || d.errorCode });
       return { error: d.message || d.errorCode || 'download failed', code };
     }
-    channel.postMessage({ type: 'ffmpeg-progress', phase: 'installing' });
+    channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'installing' });
     try {
-      const out = await node('montclip/ffmpeg-install', {}, { downloadTokens: { archive: d.token }, timeoutMs: 120000 });
-      channel.postMessage({ type: 'ffmpeg-progress', phase: 'installed', version: out.version });
+      const out = await node('montclip/ffmpeg-install', {session}, { downloadTokens: { archive: d.token }, timeoutMs: 120000 });
+      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'installed', version: out.version });
       return { download: { bytes: d.bytes, sha256: d.sha256, fromCache: d.fromCache }, install: out };
     } catch (e) {
       if (CHECK_FAILED.includes(e.code)) { checkFailures++; retryStamp = Date.now().toString(36); }
-      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: String(e.message || e) });
+      channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: String(e.message || e) });
       return { error: String(e.message || e), code: e.code || 'INSTALL_FAILED', ...(e.need ? { need: e.need } : {}) };
     }
-  })().finally(() => { installing = null; });
+  })().finally(() => { installing = null; installingSession=null; });
   return installing;
 }
 function onDownloadProgress(d) {
@@ -102,7 +105,7 @@ function onDownloadProgress(d) {
   lastDownloadPhase = d.phase;
   // how it ended is said once, with its code, by installFfmpeg (Cindy's own failed / cancelled carry none)
   if (d.phase === 'failed' || d.phase === 'cancelled') return;
-  channel.postMessage({ type: 'ffmpeg-progress', phase: d.phase, loaded: d.loaded, total: d.total, speedBps: d.speedBps });
+  channel.postMessage({ type: 'ffmpeg-progress', session:installingSession, phase: d.phase, loaded: d.loaded, total: d.total, speedBps: d.speedBps });
 }
 
 /* The export card in the chat (card capability: HTML + CSS only, no script; progress is a width). */
@@ -342,7 +345,7 @@ function statusCard(s, editorOpen) {
 
 /* Exports run in the background (JJ's P2 rule, MontClip-Cindy#3): Cindy gives a plugin tool call at most 330 s
    (`ghost tool call timed out … totalMs: 330001` in europa's log, 2026-11-05) and an export of a long edit takes longer.
-   So montclip_export answers at once with the job, and the same tool reports it ({job}) or stops it ({cancel}).
+   So montclip_candidate_export answers at once with the job, and the same tool reports it ({job}) or stops it ({cancel}).
    A follower here polls the engine, keeps the call's card up to date (a 'working' card stays open across calls), and
    once the engine has finished the file — renamed from .part into place; the engine's job is not done before that —
    copies it into the chosen folder. Only then is the export done. */
@@ -399,31 +402,31 @@ async function runFollow(f, job) {
   await sleep(1000);
   sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
 }
-/** What montclip_export says about a follower: done only once the file is in its folder. */
+/** What montclip_candidate_export says about a follower: done only once the file is in its folder. */
 function exportView(f) {
   const status = f.phase === 'copyFailed' ? 'done' : ENDED.includes(f.phase) ? f.phase : 'running';
   const o = { job: f.id, status, progress: Math.round(f.progress * 100) / 100, phase: f.phase };
   if (f.phase === 'done') return Object.assign(o, { files: (f.files || []).map((x) => String(x.name || x.file || '').split(/[\/]/).pop()), report: f.report || [] });
   if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false } : {}, plainFailure(f.failure));
   if (f.phase === 'cancelled') return o;
-  return Object.assign(o, { hint: 'The export runs in the background and its card shows the progress. Check it with montclip_export {job:"' + f.id +
-    '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
+  return Object.assign(o, { hint: 'The export runs in the background and its card shows the progress. Check it with montclip_candidate_export {job:"' + f.id +
+    '"} (it answers at once); it is done when status is "done". Stop it with montclip_candidate_export {cancel:"' + f.id + '"}.' });
 }
 
 const HANDLERS = {
-  async montclip_status(args, msg) {
+  async montclip_candidate_status(args, msg) {
     const bound = await forTask(msg).catch(() => null);
-    const s = await node('montclip/start');
+    const s = await node('montclip/start', {session:taskOf(msg)});
     let editor = null;
     try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: String(e.message) }; }
     const open = !!(editor && editor.status === 200);
     let asr = null;
-    try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
+    try { asr = await node('montclip/asr-status', {session:taskOf(msg)}); } catch (e) { asr = null; }
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
     return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
-      : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
+      : { open: false, note: 'The editor is not open in this task: montclip_candidate_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
   },
   async list_tools(args) {
     const tools = await engineTools();
@@ -444,7 +447,7 @@ const HANDLERS = {
     if (!tool) return { error: 'unknown operation ' + name, available: tools.map((t) => t.name), hint: 'list_tools({category}) shows each one with its parameters.' };
     let call = args.args || {};
     // the engine's export waits for the file by default, longer than Cindy lets a tool call run (330 s): here it answers
-    // with the job at once, and fablecut_export {job} reports it (P2, as montclip_export does)
+    // with the job at once, and fablecut_export {job} reports it (P2, as montclip_candidate_export does)
     if (name === 'fablecut_export' && call.job == null && call.cancel == null) call = Object.assign({}, call, { wait: false });
     try {
       return await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
@@ -452,14 +455,14 @@ const HANDLERS = {
       return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
   },
-  async montclip_undo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'undo' }); },
-  async montclip_redo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'redo' }); },
-  async montclip_seek(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'seek', t: Number(args.t) }); },
+  async montclip_candidate_undo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'undo' }); },
+  async montclip_candidate_redo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'redo' }); },
+  async montclip_candidate_seek(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'seek', t: Number(args.t) }); },
   /* Export, and save the file into a folder the user picks in the system dialog (folder:"default" keeps it in the
      MontClip data folder's exports/). It answers as soon as the export has started, with its job; progress shows on
-     this call's card, and montclip_export {job} reports it (see followExport). Asked again while this task's export is
+     this call's card, and montclip_candidate_export {job} reports it (see followExport). Asked again while this task's export is
      still running, it answers with that one instead of starting a second. */
-  async montclip_export(args, msg) {
+  async montclip_candidate_export(args, msg) {
     if (args.cancel != null) {
       const id = String(args.cancel), f = exportFollows.get(id);
       await node('montclip/export-cancel', { id, session: taskOf(msg) });
@@ -506,9 +509,9 @@ const HANDLERS = {
     return exportView(followExport(job, { session, callId, folder, dir, again }));
   },
   /* Only when the user agreed to the download (about 160 MB). */
-  async montclip_install_ffmpeg() { return installFfmpeg(); },
+  async montclip_candidate_install_ffmpeg(args,msg) { return installFfmpeg(taskOf(msg)); },
   /* Open (or focus) the editor as this task's own tab in the task's right sidebar. */
-  async montclip_open_task_view(args, msg) {
+  async montclip_candidate_open_task_view(args, msg) {
     if (typeof cindy.taskView !== 'function') return { error: 'This Cindy has no task views; update Cindy.' };
     const session = args.sessionId ? String(args.sessionId) : taskOf(msg);   // the task the chat is in, not whichever is in front
     return cindy.taskView(session ? { sessionId: session } : {});
@@ -557,11 +560,11 @@ cindy.onHostMessage(async function (msg) {
     if (!c) return;
     try {
       if (msg.actionId === 'install-ffmpeg') {
-        const r = await installFfmpeg();
+        const r = await installFfmpeg(msg.sessionId||null);
         if (r.error) { sendCard(msg.callId, Object.assign({}, c, { installFailed: true })); return; }   // the log has it
       }
       if ((msg.actionId === 'retry' || msg.actionId === 'install-ffmpeg') && c.again)   // 装好以后会接着做
-        await HANDLERS.montclip_export(c.again.args, Object.assign({}, c.again.msg, { callId: msg.callId }));
+        await HANDLERS.montclip_candidate_export(c.again.args, Object.assign({}, c.again.msg, { callId: msg.callId }));
       if (msg.actionId === 'pick-again' && c.job) {
         const picked = await cindy.pick({ mode: 'directory', title: '选择 MontClip 导出到哪个文件夹', callId: msg.callId });
         if (!picked || !picked.ok || !picked.path) { sendCard(msg.callId, c); return; }   // closed: the card as it was
@@ -584,7 +587,7 @@ cindy.onHostMessage(async function (msg) {
     let openFailed = null;
     try {
       if (!ask) throw Object.assign(new Error('this export was not saved into a folder of its own'), { code: 'NO_FOLDER' });
-      await node('montclip/open-folder', ask);
+      await node('montclip/open-folder', {...ask,session:msg.sessionId||null});
     } catch (e) { openFailed = { code: e.code, message: e.message }; logProblem(e.code, e.message); }
     sendCard(msg.callId, Object.assign({}, c, { openFailed }));
     return;
@@ -602,7 +605,7 @@ cindy.onHostMessage(async function (msg) {
 
 /* Pages ↔ logic page. A page posts {reqId, type}; the answer carries the same reqId. Pages resend until answered,
    so a request that repeats is answered again, not run again. */
-const channel = new BroadcastChannel('montclip');
+const channel = new BroadcastChannel('montclip-candidate');
 const answered = new Map();
 channel.onmessage = async (e) => {
   const m = e.data || {};
@@ -611,15 +614,15 @@ channel.onmessage = async (e) => {
   answered.set(m.reqId, null);
   let a;
   try {
-    if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
+    if (m.type === 'editor') { const s = await node('montclip/start', {session:m.session}); a = { origin:s.origin, url:s.url, pluginId:s.pluginId, version:s.version, session:s.session }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)
     else if (m.type === 'open-task') a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: String(m.session || ''), focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
-    else if (m.type === 'ffmpeg-install') a = await installFfmpeg();   // the banner's button: the user's own click
+    else if (m.type === 'ffmpeg-install') a = await installFfmpeg(m.session||null);   // the banner's button: the user's own click
     // the main view's 打开文件夹: always MontClip's exports folder — a page never names a path
-    else if (m.type === 'open-folder') a = await node('montclip/open-folder', { folder: 'exports' });
+    else if (m.type === 'open-folder') a = await node('montclip/open-folder', { folder: 'exports', session:m.session });
     // the task page opened by 复制问题信息 asks what to show (once: a later load shows nothing)
     else if (m.type === 'problem') { const p = pendingProblems.get(String(m.session || '')); pendingProblems.delete(String(m.session || '')); a = p ? { shown: p } : { shown: null }; }
     else a = { error: 'unknown request ' + m.type };

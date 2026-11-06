@@ -8,7 +8,7 @@ const fs = require("node:fs"), path = require("node:path"), vm = require("node:v
 const MAIN = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
 
 function host({ firstFails }) {
-  const starts = [], files = new Map();   // download id → the file the host keeps for it (a cache that never changes)
+  const messages=[]; const starts = [], files = new Map();   // download id → the file the host keeps for it (a cache that never changes)
   let listener = null;
   const cindy = {
     onHostMessage: (fn) => { listener = fn; },
@@ -34,15 +34,15 @@ function host({ firstFails }) {
       },
     },
   };
-  class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() {} }
+  class BroadcastChannel { constructor() { this.onmessage = null; } postMessage(m) {messages.push(m);} }
   vm.runInNewContext(MAIN, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL });
   let n = 0;
   const install = () => new Promise((resolve) => {
     const callId = "c" + (++n);
     cindy.send = async (m) => { if (m.type === "tool-result" && m.callId === callId) resolve(m); return { ok: true }; };
-    listener({ type: "tool-call", tool: "montclip_install_ffmpeg", callId, args: {} });
+    listener({ type: "tool-call", tool: "montclip_candidate_install_ffmpeg", callId, args: {session_context:{session_id:"download-task"}} });
   });
-  return { starts, install };
+  return { starts, install, messages };
 }
 
 test("after the archive fails its check, the retry downloads under a new id and gets a new file", async () => {
@@ -63,3 +63,5 @@ test("after a plain download failure, the retry keeps the id so Cindy can resume
   assert.equal((await h.install()).result.install.installed, true);
   assert.deepEqual(h.starts, ["ffmpeg-linux-x64", "ffmpeg-linux-x64"]);
 });
+
+test('every installer progress event is scoped to its originating task',async()=>{const h=host({firstFails:'check'});await h.install();await h.install();const events=h.messages.filter(x=>x.type==='ffmpeg-progress');assert.ok(events.some(x=>x.phase==='installed'));assert.ok(events.some(x=>x.phase==='failed'));for(const e of events)assert.equal(e.session,'download-task');});

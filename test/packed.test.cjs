@@ -7,7 +7,7 @@ const ROOT = path.resolve(__dirname, ".."), DIST = path.join(ROOT, "dist", "mont
 test("package contains the pinned engine and plugin, not the source repository", () => {
   for (const f of ["app.js", "server.js", "host-embed.js", "index.html", "style.css", "LICENSE", "LICENSES.md"])
     assert.ok(fs.readFileSync(path.join(ROOT, "engine", f)).equals(fs.readFileSync(path.join(DIST, "node", "app", f))), f);
-  for (const f of ["main.js", "ghost.json", "frame.css", "frame.js", "task-view.html", "panel.html", "node/worker.cjs", "node/lib.cjs"])
+  for (const f of ["main.js", "ghost.json", "frame.css", "frame.js", "task-view.html", "panel.html", "node/engine-worker.cjs", "node/lib.cjs"])
     assert.ok(fs.readFileSync(path.join(ROOT, f)).equals(fs.readFileSync(path.join(DIST, f))), f);
   for (const f of ["engine", ".git", "test", "test-tools", "build.cjs", "package.json"])
     assert.equal(fs.existsSync(path.join(DIST, f)), false, f);
@@ -28,7 +28,7 @@ test("built worker starts, serves editor assets and isolates task projects", { t
   const data = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-repo-smoke-"));
   const env = { ...process.env, MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0", FABLECUT_NO_FS_WATCH: "1" };
   delete env.MONTCLIP_CINDY_APP;
-  const worker = spawn(process.execPath, [path.join(DIST, "node", "worker.cjs")], { env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  const worker = spawn(process.execPath, [path.join(DIST, "node", "engine-worker.cjs"), '--candidate-paths', JSON.stringify({data,tools:data,tmp:require('os').tmpdir(),cache:data,config:data,home:data})], { env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
   let buf = "", id = 0;
   const pending = new Map();
   worker.stderr.resume();

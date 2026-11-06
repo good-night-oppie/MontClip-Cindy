@@ -45,7 +45,7 @@ function copyButton(box, problem) {
   const enginePath = document.body.dataset.enginePath || '/';     // the engine page this view frames
   const at = (u) => { const x = new URL(u); x.pathname = enginePath; return x.href; };
   const session = new URLSearchParams(location.search).get('session') || '';   // the task this page belongs to
-  const channel = new BroadcastChannel('montclip');
+  const channel = new BroadcastChannel('montclip-candidate');
   const show = (text, error, retry, problem) => {
     status.textContent = text; status.className = error ? 'error' : ''; status.hidden = false;
     if (problem) copyButton(status, problem);   // never the raw error itself
@@ -70,7 +70,7 @@ function copyButton(box, problem) {
         resolve(m);
       };
       channel.addEventListener('message', onMsg);
-      const send = () => channel.postMessage(Object.assign({ reqId, type }, extra || {}));
+      const send = () => channel.postMessage(Object.assign({ reqId, type, session }, extra || {}));
       send();
       timer = setInterval(send, 700);   // the logic page may still be waking: repeat until it answers
     });
@@ -121,9 +121,9 @@ function copyButton(box, problem) {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(); });
 
   /* First use: export and noise reduction need ffmpeg. The banner asks once (以后再说 is remembered); the download
-     starts only from its button — the user's own click — or when the user asks the chat (montclip_install_ffmpeg). */
+     starts only from its button — the user's own click — or when the user asks the chat (montclip_candidate_install_ffmpeg). */
   const banner = document.getElementById('ffmpeg');
-  const LATER = 'montclip.ffmpeg.later';
+  const LATER = 'montclip-candidate.ffmpeg.later';
   function bannerText(text, error, note, problem) {
     document.getElementById('ffmpegText').textContent = text;
     const d = document.getElementById('ffmpegDetail');
@@ -159,7 +159,7 @@ function copyButton(box, problem) {
     }
   }
   if (banner) {
-    channel.addEventListener('message', (e) => { const m = e.data || {}; if (m.type === 'ffmpeg-progress') progress(m); });
+    channel.addEventListener('message', (e) => { const m = e.data || {}; if (m.type === 'ffmpeg-progress' && m.session === session) progress(m); });
     document.getElementById('ffmpegGet').addEventListener('click', async () => {
       progress({ phase: 'queued' });
       const r = await ask('ffmpeg-install');
@@ -203,6 +203,7 @@ function copyButton(box, problem) {
 
   async function boot() {
     try { await fetch('/wake'); } catch (e) { /* a page of a stopped plugin: the asks below simply wait */ }
+    if(!session){show('请在 Cindy 的具体任务中打开「MontClip 候选试用」；候选不会连接其他任务的剪辑器。',false,false);return;}
     if (!(await bind())) return;
     const a = await ask('editor');
     if (a.error || !a.url) {
@@ -210,6 +211,8 @@ function copyButton(box, problem) {
       else { const f = failureText('MontClip 没能启动。', a.error, a.code); show(f.text, true, false, f.problem); }
       return;
     }
+    document.title = (a.pluginId || "montclip-candidate") + " " + (a.version || "") + " · " + session;
+    const identity=document.createElement("div");identity.id="candidate-identity";identity.textContent="MontClip 候选试用 · "+a.version+" · "+session;identity.style.cssText="position:fixed;top:0;right:0;z-index:99;font-size:11px;pointer-events:none";document.body.appendChild(identity);
     place(at(a.url));
     offerFfmpeg();
     /* While the page is open the engine must stay up: asking keeps the worker from going idle, and when it was

@@ -1,3 +1,9 @@
+# MontClip 独立候选试用
+
+本分支专用于独立候选，id `montclip-candidate`，版本 `0.5.1-trial.1`；不替换现用 `montclip`，不合入正式默认身份。数据根和任务子进程独立。安装、入口、隔离负控和未验项见 [独立试用交接](docs/ISOLATED-TRIAL.md)。HEVC合成预览黑屏仍为硬缺项。
+
+以下为正式插件迁移背景，不代表本试用身份：
+
 # MontClip for Cindy
 
 MontClip 的 Cindy 插件独立仓库。在 Cindy 任务中打开剪辑器，用对话操作本机录像、时间线、字幕和导出。

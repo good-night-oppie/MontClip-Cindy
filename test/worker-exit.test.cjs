@@ -26,7 +26,7 @@ test("when Cindy closes the worker's stdin, the engine's shutdown runs and the w
   const app = path.join(root, "app"), data = path.join(root, "data");
   fakeEngine(app);
   const env = { ...process.env, MONTCLIP_CINDY_APP: app, MONTCLIP_CINDY_DATA: data, MONTCLIP_CINDY_PORT: "0" };
-  const worker = spawn(process.execPath, [path.join(__dirname, "..", "node", "worker.cjs")], { env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+  const worker = spawn(process.execPath, [path.join(__dirname, "..", "node", "engine-worker.cjs"), '--candidate-paths', JSON.stringify({data,tools:data,tmp:require('os').tmpdir(),cache:data,config:data,home:data})], { env, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
   t.after(() => { if (worker.exitCode === null && worker.signalCode === null) worker.kill("SIGKILL"); });
   worker.stderr.resume();
   const started = new Promise((resolve) => {

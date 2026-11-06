@@ -5,7 +5,7 @@
   "use strict";
   const V = window.MontClipOverview;
   const $ = (id) => document.getElementById(id);
-  const channel = new BroadcastChannel('montclip');
+  const channel = new BroadcastChannel('montclip-candidate');
   function ask(type, extra) {
     const reqId = type + '-' + Math.random().toString(36).slice(2);
     return new Promise((resolve) => {
@@ -16,7 +16,7 @@
       send(); timer = setInterval(send, 700);
     });
   }
-  const PIN = 'montclip.pin.done';
+  const PIN = 'montclip-candidate.pin.done';
   try { if (localStorage.getItem(PIN) === '1') $('pin').hidden = true; } catch (e) { }
   $('pinDone').addEventListener('click', () => { $('pin').hidden = true; try { localStorage.setItem(PIN, '1'); } catch (e) { } });
 

@@ -65,7 +65,7 @@ test("the size: the manifest's bytes through the engine's aboutMb; a different m
     fs.writeFileSync(path.join(app, "asr-status.js"), "module.exports = { aboutMb: (b) => 7 };");
     assert.equal(aboutMbFrom(app)(243371218), 7, "the engine's aboutMb is the one used");
   } finally { fs.rmSync(app, { recursive: true, force: true }); }
-  const w = fs.readFileSync(path.join(ROOT, "node", "worker.cjs"), "utf8");
+  const w = fs.readFileSync(path.join(ROOT, "node", "engine-worker.cjs"), "utf8");
   assert.match(w, /modelMb/); assert.match(w, /asr-manifest\.json/);
   assert.doesNotMatch(MAIN, /1e6|1048576 \/ 10|约 2[34]0 MB|about 2[34]0 MB/, "main.js rounds nothing and writes no size");
 });
