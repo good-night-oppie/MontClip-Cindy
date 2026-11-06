@@ -69,4 +69,26 @@ test("built worker starts, serves editor assets and isolates task projects", { t
   const b = await rpc("montclip/bind", { session: "repo-test-B" });
   assert.notEqual(a.project, b.project);
   assert.equal((await rpc("montclip/bind", { session: "repo-test-A" })).project, a.project);
+
+  // P8 (europa, 2026-11-05): the first transcription request loaded asr-models.js, which read
+  // desktop/asr-manifest.json — not in the package — and the throw took the whole worker down. Now the engine
+  // answers that there is no speech engine here, and keeps running.
+  const st = await fetch(start.origin + "/api/asr/status", { headers });
+  assert.equal(st.status, 200);
+  const sj = await st.json();
+  assert.equal(sj.engine.ready, false); assert.equal(sj.asr.ready, false);
+  assert.equal(sj.model, "paraformer-zh-2023-09-14-int8", "the manifest is in the package");
+  const tr = await fetch(start.origin + "/api/asr/transcribe", { method: "POST", headers, body: JSON.stringify({ src: "/media/none.wav" }) });
+  assert.equal(tr.status, 404);
+  assert.ok((await rpc("montclip/tools")).tools.length, "the worker is still running");
+  // where a speech engine and its model go: the plugin's own data folder, never the app folder a plugin update replaces
+  const asr = await rpc("montclip/asr-status");
+  assert.equal(asr.engineDir, path.join(data, "asr"));
+  assert.equal(asr.modelsDir, path.join(data, "asr-models"));
+  assert.equal(asr.engine, false); assert.equal(asr.model, false);
+  assert.equal(asr.native, "sherpa-onnx-" + (process.platform === "win32" ? "win" : process.platform) + "-" + process.arch);
+});
+
+test("the package carries the speech manifest the engine reads (desktop/asr-manifest.json)", () => {
+  assert.ok(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json")).equals(fs.readFileSync(path.join(DIST, "node", "app", "desktop", "asr-manifest.json"))));
 });
