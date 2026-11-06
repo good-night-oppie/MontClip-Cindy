@@ -49,6 +49,7 @@ for (const e of fs.readdirSync(ROOT, { withFileTypes: true })) {
   if (!FILE_EXT.has(path.extname(e.name))) continue;
   copy(path.join(ROOT, e.name), path.join(OUT, e.name));
 }
+copy(path.join(ROOT, "reference/privacy-cover.md"), path.join(OUT, "reference/privacy-cover.md"));
 copy(path.join(ROOT, "LICENSE"), path.join(OUT, "LICENSE"));
 copy(path.join(ROOT, "LICENSES.md"), path.join(OUT, "LICENSES.md"));
 const walk = (rel) => {
