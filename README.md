@@ -1,5 +1,7 @@
 当前新候选见 [trial.9 产品集成](docs/TRIAL9-PRODUCT-INTEGRATION.md)：#154→#172→#175→#176最小修复已集成，待本次增量审查。trial.8原包与覆盖记录保留为历史；已装候选保持 Disabled。
 
+QQ已完成trial.9增量核验：仅测试电脑独立试用，AI抠像选“先不用”，不得交主播/替换。新的[MediaPipe资源安全硬依赖与文案清单](docs/TRIAL9-RESOURCE-SAFETY-GATE.md)待主仓唯一实现方补丁；不以现有网络白名单代替资源修复。
+
 最新诊断码覆盖见 [trial.8交接](docs/TRIAL8-DIAGNOSTIC-CODES.md)。锁提示已用JJ定稿；QQ 已完成绑定 c8af1bd 的增量安全复核（COMMENTED，非 Approve）。[DD 正式 UI 升级清单](docs/TRIAL8-UPGRADE-CHECKLIST.md)已准备，安装/启用仍需另获授权。
 
 最新锁归属提示见 [trial.7交接](docs/TRIAL7-LOCK-REASON.md)。JJ已定稿并实施，等待QQ本次增量复核；不安装。

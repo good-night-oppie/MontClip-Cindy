@@ -1,5 +1,7 @@
 # trial.9 同包产品集成（SOP v2）
 
+**后续 QQ 安全复核限制：仅测试电脑独立试用，AI 抠像提示选“先不用”；不得交主播/替换现用。** 未锁版本的MediaPipe远程资源须由主仓#154唯一实现方先修复，再移植验证。完整硬依赖、network.hosts实证及全部可见文案定稿状态见 [资源安全前置](TRIAL9-RESOURCE-SAFETY-GATE.md)。旧三键通过不代表全部文案定稿。
+
 独立候选 `montclip-candidate` / `0.5.1-trial.9`，仍为 Draft 待审，不安装、启用、下载工具、替换或合并。trial.8 原包保存在 dist/preserved-trial8 和 Europa c8af1bd 目录。trial.8 的 QQ COMMENTED 只绑定旧产品，不自动批准本次新增量。JJ 已定稿文字按以下来源移植，不重复请求定同句。
 
 ## DAG、移植来源和冲突
