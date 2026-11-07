@@ -92,3 +92,15 @@ test("built worker starts, serves editor assets and isolates task projects", { t
 test("the package carries the speech manifest the engine reads (desktop/asr-manifest.json)", () => {
   assert.ok(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json")).equals(fs.readFileSync(path.join(DIST, "node", "app", "desktop", "asr-manifest.json"))));
 });
+
+test("the package carries the license notices of the bundled assistant pane (LICENSES.md points at them)", () => {
+  const app = path.join(DIST, "node", "app");
+  const notices = ["agent-ui/upstream/LICENSE", "agent-ui/upstream/NOTICE", "agent-ui/cindy-43001ea/LICENSE", "agent-ui/cindy-43001ea/NOTICE",
+    "agent-ui/THIRD-PARTY-NOTICES.txt", "agent-ui/BUNDLED-LICENSES.json", "agent-ui/BUNDLED-PACKAGES.json", "agent-ui/SOURCES.json",
+    "agent-ui/licenses/react-remove-scroll-bar.LICENSE"];
+  assert.match(fs.readFileSync(path.join(app, "LICENSES.md"), "utf8"), /agent-ui\/THIRD-PARTY-NOTICES\.txt/);
+  for (const rel of notices) {
+    assert.ok(fs.readFileSync(path.join(app, rel)).equals(fs.readFileSync(path.join(ROOT, "engine", rel))), rel);
+  }
+  assert.equal(fs.existsSync(path.join(app, "agent-ui", "pane.tsx")), false, "sources stay out");
+});
