@@ -42,14 +42,14 @@ function host() {
   vm.runInNewContext(MAIN, { cindy, BroadcastChannel, console: { warn() {}, log() {}, error() {} }, setTimeout: fastTimeout, clearTimeout,
     setInterval, clearInterval, Date, Promise, JSON, Math, URL });
   let n = 0;
-  const call = (tool, args) => new Promise((resolve) => {
+  const call = (tool, args, session = "task-1") => new Promise((resolve) => {
     const callId = "c" + (++n);
     cindy.send = async (m) => {
       if (m.type === "card-update") cards.push({ callId: m.callId, state: m.state, html: m.html });
       if (m.type === "tool-result" && m.callId === callId) resolve(m);
       return { ok: true };
     };
-    listener({ type: "tool-call", tool, callId, args: { ...args, session_context: { session_id: "task-1" } } });
+    listener({ type: "tool-call", tool, callId, args: { ...args, session_context: { session_id: session } } });
   });
   const until = async (pred, what) => {
     for (let i = 0; i < 400; i++) { if (pred()) return; await new Promise((r) => setTimeout(r, 2)); }
@@ -168,4 +168,11 @@ test("after a plugin reload (no follower) a job the engine finished is exported,
   // still running and failed jobs read as before
   Object.assign(h.job, { status: "pending", progress: 0.2 });
   assert.equal((await h.call("montclip_export", { job: "x_job1" })).result.status, "running");
+});
+
+test("an in-memory export follower cannot be queried from another task", async t => {
+  const h=host(); t.after(()=>{h.job.status="cancelled";});
+  await h.call("montclip_export", {});
+  const denied=await h.call("montclip_export", {job:"x_job1"}, "task-2");
+  assert.equal(denied.ok,false); assert.equal(denied.errorCode,"EXPORT_TASK_MISMATCH");
 });

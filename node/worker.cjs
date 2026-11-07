@@ -23,6 +23,38 @@ const APP = path.resolve(process.env.MONTCLIP_CINDY_APP || path.join(__dirname, 
 // the plugin's work lives in the user's home, never inside the plugin (an update replaces the plugin folder)
 const DATA = path.resolve(process.env.MONTCLIP_CINDY_DATA || path.join(os.homedir(), "MontClip-Cindy"));
 const FOLDERS_FILE = path.join(DATA, "cindy-export-folders.json");   // which folder each export went into (打开文件夹)
+const RESULTS_FILE = path.join(DATA, "cindy-export-results.json");
+// Last 200 completed results survive the engine's one-hour in-memory job retention.
+function savedResults() {
+  try { const data = JSON.parse(fs.readFileSync(RESULTS_FILE, "utf8")); return Array.isArray(data) ? data : []; }
+  catch (e) { if (e.code !== "ENOENT") note({event:"export-results-unreadable", code:e.code || "INVALID_JSON"}); return []; }
+}
+function keepResult(job) {
+  if (job.status !== "done" || !job.id) return;
+  const entries = savedResults().filter(x => x && x.id !== job.id);
+  entries.push(job);
+  const temp = RESULTS_FILE + "." + newToken() + ".part";
+  try { fs.writeFileSync(temp, JSON.stringify(entries.slice(-200)), {flag:"wx"}); fs.renameSync(temp, RESULTS_FILE); }
+  finally { fs.rmSync(temp, {force:true}); }
+}
+function checkExportTask(job, session) {
+  if ((job.session || null) !== (session || null)) throw Object.assign(new Error("this export belongs to another task"), {code:"EXPORT_TASK_MISMATCH"});
+  return job;
+}
+async function exportJob(id, session) {
+  const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(id || "")));
+  if (r.status === 200) {
+    checkExportTask(r.body, session);
+    if (r.body.status === "done") try { keepResult(r.body); } catch (e) { note({event:"export-result-not-kept",id:r.body.id,code:e.code}); }
+    return r.body;
+  }
+  if (r.status === 404) {
+    const saved = savedResults().find(x => x && x.id === id && x.status === "done");
+    if (saved) return checkExportTask(saved, session);
+    throw Object.assign(new Error("no such export job"), {code:"NO_JOB"});
+  }
+  throw Object.assign(new Error("could not read export job"), {code:"NODE_REQUEST_FAILED"});
+}
 const endedNoted = new Set();   // export jobs whose end without a file is already in the log
 const PLATFORM = `${process.platform}-${process.arch}`;
 const FFMPEG_DIR = path.join(DATA, "ffmpeg", PLATFORM);
@@ -203,12 +235,12 @@ const METHODS = {
     const body = { project: p.project, session: p.session, range: p.range, preset: p.preset, profile: p.profile, delivery: p.delivery, outputs: p.outputs, where: p.where || "auto" };
     const r = await api("POST", "/api/export/request", body);
     if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || `export request failed (${r.status})`), { code: (r.body && r.body.code) || "EXPORT_REFUSED" });
+    if (p.dir) try { rememberFolder(FOLDERS_FILE, String(r.body.id), String(p.dir)); } catch (e) { note({event:"folders-not-kept",code:e.code}); }
     return r.body;
   },
   async "montclip/export-job"(p) {
     await start();
-    const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(p.id || "")));
-    if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || "no such export job"), { code: "NO_JOB" });
+    const r = {body: await exportJob(String(p.id || ""), p.session)};
     // why an export ended without its file goes to Cindy's log once (P11: the reason was nowhere to be found afterwards)
     if ((r.body.status === "failed" || r.body.status === "cancelled") && !endedNoted.has(r.body.id)) {
       endedNoted.add(r.body.id);
@@ -219,14 +251,15 @@ const METHODS = {
   },
   async "montclip/export-cancel"(p) {
     await start();
+    await exportJob(String(p.id || ""), p.session);
     const r = await api("POST", "/api/export/job/cancel?id=" + encodeURIComponent(String(p.id || "")));
     if (r.status !== 200) throw Object.assign(new Error((r.body && r.body.error) || "no such export job"), { code: "NO_JOB" });
     return r.body;
   },
   async "montclip/export-deliver"(p) {
     await start();
-    const r = await api("GET", "/api/export/job?id=" + encodeURIComponent(String(p.id || "")));
-    if (r.status !== 200 || r.body.status !== "done") throw Object.assign(new Error("the export is not finished"), { code: "NOT_DONE" });
+    const r = {body: await exportJob(String(p.id || ""), p.session)};
+    if (r.body.status !== "done") throw Object.assign(new Error("the export is not finished"), {code:"NOT_DONE"});
     const files = exportFiles(r.body, path.join(DATA, "exports"));
     if (!files.length) throw Object.assign(new Error("the export made no file"), { code: "NO_FILE" });
     let sent = 0, last = 0;
@@ -261,6 +294,7 @@ const METHODS = {
   async "montclip/open-folder"(p) {
     const exportsDir = path.join(DATA, "exports");
     fs.mkdirSync(exportsDir, { recursive: true });
+    if (p.job != null) await exportJob(String(p.job), p.session);
     const picked = p.job != null ? folderOfJob(FOLDERS_FILE, p.job) : null;
     const target = p.folder === "exports" && p.job == null ? exportsDir : picked;
     if (!target) throw Object.assign(new Error("only the exports folder or the folder an export went into can be opened"), { code: "FOLDER_NOT_ALLOWED" });
