@@ -259,13 +259,14 @@ function spaceNeeded({ archiveBytes, unpackedBytes, free }) {
   return n > 0 ? n : whole;
 }
 
+/** The real path of an existing p (links and Windows junctions followed); null when it cannot be resolved. */
+const real = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
 /* 打开文件夹 on the export card: the system file manager on one folder — MontClip's exports folder, or a folder the
    user picked for an export (`allowed`). Any other path is refused, whatever the page or the agent asks. */
 function openFolder(target, { allowed, platform = process.platform, spawn, env = process.env }) {
   if (typeof target !== "string" || !path.isAbsolute(target))
     throw Object.assign(new Error("only the exports folder or a folder picked for an export can be opened"), { code: "FOLDER_NOT_ALLOWED" });
   const key = (p) => (platform === "win32" ? p.toLowerCase() : p);
-  const real = (p) => { try { return fs.realpathSync.native(p); } catch { return null; } };
   const want = path.resolve(target), wantReal = real(want);
   const ok = (allowed || []).filter((a) => typeof a === "string" && path.isAbsolute(a)).some((a) => {
     const r = real(path.resolve(a));
@@ -321,31 +322,31 @@ function configDir({ platform = process.platform, env = process.env, home = requ
   return path.join(abs(env.XDG_CONFIG_HOME) || path.join(home, ".config"), "montclip-cindy");
 }
 /* The real location of p, even when p or some of its parents do not exist yet: the nearest part that exists goes
-   through realpath (so a symlink or Windows junction anywhere on the way is followed), the rest is appended.
+   through real() (so a symlink or Windows junction anywhere on the way is followed), the rest is appended.
    null when a part exists but cannot be resolved (a dangling link: its target could be created later). */
-function realLocation(p, fsx = fs) {
+function realLocation(p) {
   let cur = path.resolve(p); const rest = [];
   for (;;) {
     let exists = true;
-    try { fsx.lstatSync(cur); } catch { exists = false; }
-    if (exists) { try { return path.join(fsx.realpathSync.native(cur), ...rest); } catch { return null; } }
+    try { fs.lstatSync(cur); } catch { exists = false; }
+    if (exists) { const r = real(cur); return r ? path.join(r, ...rest) : null; }
     const up = path.dirname(cur);
     if (up === cur) return path.join(cur, ...rest);
     rest.unshift(path.basename(cur)); cur = up;
   }
 }
 /* Where the engine reads the user's own FFmpeg (engine external-ffmpeg.js: {version:1, path}, H.264 export only).
-   null — the feature stays off — when that file would really sit inside the data folder, compared after following
-   links on both sides (Rea on #35: a junction or symlink must not smuggle it in), or when either side cannot be
-   resolved. */
+   null — the feature stays off — when, after following links on both sides (QQ's ruling on #35), the settings file
+   sits inside the data folder, or the data folder sits inside the settings folder; also when either side cannot be
+   resolved — never a fallback to comparing the written paths. Checked once when the worker starts (QQ: enough). */
 function externalFfmpegSettings(data, opts = {}) {
   const platform = opts.platform || process.platform;
-  const file = path.join(configDir(opts), "external-ffmpeg.json");
-  const realFile = realLocation(file, opts.fs), realData = realLocation(data, opts.fs);
-  if (!realFile || !realData) return null;
+  const dir = configDir(opts), file = path.join(dir, "external-ffmpeg.json");
+  const realData = real(path.resolve(data)), realDir = realLocation(dir), realFile = realLocation(file);
+  if (!realData || !realDir || !realFile) return null;
   const norm = (p) => (platform === "win32" ? p.toLowerCase() : p);
-  const rel = path.relative(norm(realData), norm(realFile));
-  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? null : file;
+  const within = (parent, child) => { const r = path.relative(norm(parent), norm(child)); return !r || (!r.startsWith("..") && !path.isAbsolute(r)); };
+  return within(realData, realFile) || within(realDir, realData) ? null : file;
 }
 module.exports = { configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };

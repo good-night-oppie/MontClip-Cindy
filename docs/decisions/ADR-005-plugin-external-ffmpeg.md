@@ -13,10 +13,12 @@
   - Windows：`%APPDATA%\MontClip-Cindy`。Cindy 启动插件时会裁剪环境变量，可能没有 APPDATA，这时用 `<home>\AppData\Roaming\MontClip-Cindy`。
   - `MONTCLIP_CINDY_CONFIG` 可以覆盖这个位置，只给测试用。
   - 这几个环境变量（`APPDATA`、`XDG_CONFIG_HOME`、`MONTCLIP_CINDY_CONFIG`）只认绝对路径；空值或相对路径都当没设，走默认位置。所以算出来的位置永远是绝对路径，不会随进程从哪个目录启动而变（Rea 在 #35 指出；XDG 规范本来也要求忽略相对的 `XDG_CONFIG_HOME`）。
-- worker 把这个绝对路径（`<设置目录>/external-ffmpeg.json`）传给 `MONTCLIP_EXTERNAL_FFMPEG_SETTINGS`。如果这个文件**实际**落在 DATA 里面，就不设这个变量，功能保持关闭，不会去 DATA 里读。判断方法：
-  - 设置文件和 DATA 两边都先解析真实路径再比较（`realLocation`：从最近一级已经存在的目录用 `fs.realpathSync.native` 解析，没建的部分原样接上）。所以路径上任何一层是符号链接或 Windows 目录联接（junction）、指进 DATA 的，或者 DATA 本身是经链接访问的，都会被认出来（Rea 在 Win11 上用 junction 实测绕过了上一版的字面比较）。
+- worker 把这个绝对路径（`<设置目录>/external-ffmpeg.json`）传给 `MONTCLIP_EXTERNAL_FFMPEG_SETTINGS`。下面两种情况都不设这个变量，功能保持关闭（QQ 在 #35 的裁定）：设置文件**实际**落在 DATA 里面；或者 DATA **实际**落在设置目录里面。判断方法：
+  - 两边都先取真实路径再比较。DATA 直接用 `real()`（`fs.realpathSync.native`，worker 在检查之前已经建好 DATA）。设置目录和设置文件用 `realLocation`：往上找最近一个已经存在的上级目录，用 `real()` 取它的真实路径，没建的部分原样接上。
+  - 任何一边取不到真实路径（DATA 不存在、悬空链接等），就返回 null，关掉这个功能。不会退回到只比较写出来的路径。所以路径上任何一层是符号链接或 Windows 目录联接（junction）、指进 DATA 的，或者 DATA 本身是经链接访问的，都会被认出来（Rea 在 Win11 上用 junction 实测绕过了上一版的字面比较）。
   - 设置文件本身是链接、指进 DATA 的，同样关闭。悬空链接（目标还不存在，以后可能被建出来）、或者任何一层解析失败的，一律关闭。
   - Windows 上比较不分大小写。
+  - worker 启动时检查一次。QQ 裁定不用在引擎每次读设置文件时再检查。
 - 没有设置文件时（ENOENT），引擎判定为 `none`，行为和现在完全一样。DATA 里以前留下的同名文件不再被读取。
 - 不加界面，不加文案，也不改引擎代码。
 
@@ -30,12 +32,12 @@
 - 外发：不涉及联网，在本机运行，不新增网络请求，也没有遥测。
 - 谁写这个设置文件：主播本人（或由主播授权的测试人员）。插件不自动生成它，也还没有选择 FFmpeg 的界面；要不要加界面、文案怎么写，由 JJ 和 Deja 另定。
 - 日志和页面上的路径：沿用引擎的 `maskUserPath`。
-- 检查和使用之间的残余风险（请 QQ 判断，我认为可以接受）：worker 只在启动时检查一次，引擎每次用时再读文件，中间设置目录可能被换成链接。但要换它，必须能写主播自己的设置目录；这次要防的是「引擎里的路径 bug 只能写 DATA」，这种 bug 写不到设置目录。能写设置目录的，本来就能以主播身份做任何事，这一步不扩大影响面。所以这一版不在引擎读文件时再核一次，也不改引擎。
+- 检查和使用之间的残余风险（QQ 已裁定启动时检查一次就够）：worker 只在启动时检查一次，引擎每次用时再读文件，中间设置目录可能被换成链接。但要换它，必须能写主播自己的设置目录；这次要防的是「引擎里的路径 bug 只能写 DATA」，这种 bug 写不到设置目录。能写设置目录的，本来就能以主播身份做任何事，这一步不扩大影响面。所以这一版不在引擎读文件时再核一次，也不改引擎。
 - 打包进安装包的仍然只有钉死的 LGPL FFmpeg。GPL 的 x264 不随包分发。
 
 ## 验证
 - `test/external-ffmpeg.test.cjs`：
-  - 所有系统（包括 Windows）都跑：各系统的设置目录位置；设置文件不在 DATA 下面；设置目录落在 DATA 里面时功能关闭；Windows 路径比较不分大小写；相对或空的 `APPDATA`/`XDG_CONFIG_HOME` 当没设、结果总是绝对路径；在真实磁盘上建链接（Windows 用 junction，不需要管理员权限）：设置目录是指进 DATA 的链接、还没建的设置目录的上层是这样的链接、DATA 经链接访问，这几种都关闭；指向 DATA 外的链接照常可用；worker 不再用 `path.join(DATA, "external-ffmpeg.json")`。
+  - 所有系统（包括 Windows）都跑：各系统的设置目录位置；设置文件不在 DATA 下面；设置目录落在 DATA 里面时功能关闭；Windows 路径比较不分大小写；相对或空的 `APPDATA`/`XDG_CONFIG_HOME` 当没设、结果总是绝对路径；在真实磁盘上建链接（Windows 用 junction，不需要管理员权限）：设置目录是指进 DATA 的链接、还没建的设置目录的上层是这样的链接、DATA 经链接访问，这几种都关闭；反方向也测了：DATA 在设置目录里、DATA 是指进设置目录的链接、DATA 是指向设置目录本身的链接，都关闭；DATA 不存在时关闭；指向 DATA 外的链接照常可用；worker 不再用 `path.join(DATA, "external-ffmpeg.json")`。
   - 只在 Linux/macOS 跑：设置文件本身是指进 DATA 的链接、设置文件是悬空链接，这两种都关闭（Windows 上建文件链接要管理员权限）。
   - 只在 Linux/macOS 跑，经过构建出来的 worker 端到端验证：设置文件在设置目录里时，`/api/export/h264` 返回 `external.ok:true`；同样的文件放在 DATA 里会被忽略（`none`）；没有设置文件时返回 `none`。Windows 上不跑这三条：引擎有意用 execFile、不经过 shell 来运行 FFmpeg，而 Node 修了 CVE-2024-27980 之后，`.cmd`/`.bat` 替身程序没法这样启动；要做真正的 `.exe` 替身，CI 机器上得有编译器。
 - 合并前（按 QQ 的要求）：在 europa 上用 `/usr/bin/ffmpeg` 实测一次带音轨的 H.264 导出，报告声画差。

@@ -19,15 +19,29 @@ test("the settings folder is the system's per-user config folder, outside the da
   assert.equal(configDir({ platform: "win32", env: { APPDATA: path.resolve("/AppData/Roaming") }, home }), path.join(path.resolve("/AppData/Roaming"), "MontClip-Cindy"));
   // Cindy trims the worker's environment: no APPDATA → the usual Roaming folder under the home folder
   assert.equal(configDir({ platform: "win32", env: {}, home }), path.join(home, "AppData", "Roaming", "MontClip-Cindy"));
+});
+
+// A real temporary home: DATA must exist (the worker creates it before this check), it goes through realpath.
+function tmpHome(t) {
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mc-ext-")));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const data = path.join(tmp, "MontClip-Cindy"); fs.mkdirSync(data);
+  return { tmp, home: tmp, data };
+}
+test("with the default folders the settings file is found, outside the data folder", (t) => {
+  const { home, data } = tmpHome(t);
   for (const platform of ["linux", "darwin", "win32"]) {
-    const data = path.join(home, "MontClip-Cindy"), file = externalFfmpegSettings(data, { platform, env: {}, home });
+    const file = externalFfmpegSettings(data, { platform, env: {}, home });
     assert.equal(path.basename(file), "external-ffmpeg.json", platform);
     assert.ok(!inside(data, file), `${platform}: ${file} is not under ${data}`);
   }
 });
+test("a data folder that does not exist (cannot be resolved) turns the feature off", () => {
+  assert.equal(externalFfmpegSettings(path.join(os.tmpdir(), "mc-ext-never-created-" + process.pid), { env: {} }), null);
+});
 
-test("a settings folder inside the data folder turns the feature off instead of reading it there", () => {
-  const data = path.resolve("/home/u/MontClip-Cindy");
+test("a settings folder inside the data folder turns the feature off instead of reading it there", (t) => {
+  const { data } = tmpHome(t);
   assert.equal(externalFfmpegSettings(data, { platform: "linux", env: { MONTCLIP_CINDY_CONFIG: path.join(data, "cfg") } }), null);
   assert.equal(externalFfmpegSettings(data, { platform: "linux", env: { MONTCLIP_CINDY_CONFIG: data } }), null);
   // Windows paths compare without case
@@ -44,7 +58,7 @@ test("relative or empty APPDATA / XDG_CONFIG_HOME count as unset, so the folder 
   assert.equal(configDir({ platform: "linux", env: { MONTCLIP_CINDY_CONFIG: "cfg" }, home }), path.join(home, ".config", "montclip-cindy"));
   for (const platform of ["linux", "darwin", "win32"])
     for (const env of [{ XDG_CONFIG_HOME: "cfg" }, { APPDATA: "Roaming" }])
-      assert.ok(path.isAbsolute(externalFfmpegSettings(path.join(home, "MontClip-Cindy"), { platform, env, home })), `${platform} ${JSON.stringify(env)}`);
+      assert.ok(path.isAbsolute(configDir({ platform, env, home })), `${platform} ${JSON.stringify(env)}`);
 });
 
 // Real links on disk. "junction" is the Windows directory link that needs no admin rights; elsewhere the type is
@@ -74,6 +88,14 @@ test("links cannot smuggle the settings into the data folder (Rea on #35)", (t) 
     fs.symlinkSync(path.join(tmp, "nowhere", "x.json"), path.join(cfg2, "external-ffmpeg.json"));
     assert.equal(off(cfg2), null);
   }
+  // 5. the other direction: DATA inside the settings folder, literally or through a link (QQ's ruling)
+  const outer = path.join(tmp, "outer-cfg"); fs.mkdirSync(path.join(outer, "inner-data"), { recursive: true });
+  assert.equal(off(outer, path.join(outer, "inner-data")), null);
+  linkDir(path.join(outer, "inner-data"), path.join(tmp, "data-into-cfg"));
+  assert.equal(off(outer, path.join(tmp, "data-into-cfg")), null);
+  //    …and DATA that is a link pointing at the settings folder itself
+  linkDir(outer, path.join(tmp, "data-is-cfg"));
+  assert.equal(off(outer, path.join(tmp, "data-is-cfg")), null);
   // a real folder outside DATA, and a link that points outside DATA, still work
   const real = path.join(tmp, "cfg-real"); fs.mkdirSync(real);
   assert.equal(off(real), path.join(real, "external-ffmpeg.json"));
