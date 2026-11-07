@@ -199,7 +199,7 @@ function copyFailureText(c, lang) {
 }
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
-  const text = c.code === 'NO_JOB' ? '这次导出的记录已失效。请打开导出文件夹查看已有成片；没有找到的话，可以重新导出。你的剪辑都还在。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
+  const text = c.code === 'NO_JOB' ? '这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -242,7 +242,7 @@ function exportCard(c, lang) {
   const files = (c.files || []).map((f) => '<li style="overflow-wrap:anywhere">' + esc(f.name) + (f.bytes ? ' · ' + sizeText(f.bytes, lang) : '') +
     (f.renamed ? '<div style="' + small + ';margin-top:2px">' + t.renamed + '</div>' : '') + '</li>').join('');
   const where = c.phase === 'done' ? '<p style="margin:8px 0 0">' + (c.folder ? t.savedTo(esc(c.folder)) : t.savedDefault) + '</p>' : '';
-  const body = c.code === 'NO_JOB' ? '<p>' + (lang === 'en' ? 'This export record has expired. Open the exports folder to look for the finished file, or export again. Your edits are kept.' : plainFailure(c).error) + '</p>' : c.phase === 'still' ? '<p style="' + small + '">' + (c.job ? (lang === 'en' ? 'Still exporting; click Retry to check this export and finish saving to the chosen folder.' : '还在导出，尚未存入所选文件夹。点〔重试〕查看这次导出，完成后继续存入原来选的文件夹。') : t.stillNote) + '</p>'
+  const body = c.code === 'NO_JOB' ? '<p>' + (lang === 'en' ? "This export's record is no longer available. Open the exports folder to see if the finished file is there; if it isn't, export again. Your edits are all still there." : plainFailure(c).error) + '</p>' : c.phase === 'still' ? '<p style="' + small + '">' + (c.job ? (lang === 'en' ? 'Still exporting; click Retry to check this export and finish saving to the chosen folder.' : '还在导出，尚未存入所选文件夹。点〔重试〕查看这次导出，完成后继续存入原来选的文件夹。') : t.stillNote) + '</p>'
     : c.phase === 'cancelled' ? '<p style="' + small + '">' + t.noFolder + '</p>'
     : c.phase === 'copyFailed' ? '<p style="margin:0">' + esc(copyFailureText(c, lang)) + '</p>'
     // 导出没有完成: why, in plain words; 你的剪辑都还在，没有丢。 — never the raw error (JJ v2)
