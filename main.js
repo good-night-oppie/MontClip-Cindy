@@ -174,14 +174,34 @@ function asrResultText(r, lang) {
 /* The last failure, for the 「给开发者看（不用管）」 line of a copy (the card never shows a code). */
 let asrProblem = null;
 function asrLastProblem() { return asrProblem; }
-function asrCopyText(problem, lang) {
-  const t = asrWords(lang), p = problem || {};
-  return t.failed + '\n' + t.dev + (lang === 'en' ? ': ' : '：') + (p.code || 'UNKNOWN') + ': ' + String(p.error == null ? '' : p.error);
+// Only fixed codes and fixed sentences may cross the agent/copy boundary. Never retain tar stderr,
+// host errors or unknown codes here: those can contain local paths, usernames or service details.
+const ASR_ERRORS = Object.freeze({
+  UNSUPPORTED_PLATFORM: '这台电脑暂不支持安装听写程序。',
+  HOST_TOO_OLD: '请先更新 Cindy，再安装听写程序。',
+  NOT_ASKED: '没有完成下载确认，因此没有开始下载。',
+  DOWNLOAD_FAILED: '听写文件没有下载完成，请稍后重试。',
+  CANCELLED: '听写文件下载已取消。',
+  SIZE_MISMATCH: '下载文件的大小不符，没有安装。',
+  SHA256_MISMATCH: '下载文件的校验不符，没有安装。',
+  BAD_ARCHIVE: '听写程序包无法解压，没有安装。',
+  NO_FILE: '安装所需的文件不完整，没有安装。',
+  ASR_DIR_REFUSED: '安装目录不符合安全要求，没有安装。',
+  INSTALL_FAILED: '听写程序没有安装完成，请稍后重试。',
+});
+function asrSafeFailure(code) {
+  const safe = typeof code === 'string' && Object.prototype.hasOwnProperty.call(ASR_ERRORS, code) ? code : 'INSTALL_FAILED';
+  return { code: safe, error: ASR_ERRORS[safe] };
 }
-function asrFailed(code, error) {
-  asrProblem = { code, error: String(error || ''), at: new Date().toISOString() };
-  logProblem(code, error || code);
-  return { error: String(error || code), code };
+function asrCopyText(problem, lang) {
+  const t = asrWords(lang), p = asrSafeFailure(problem && problem.code);
+  return t.failed + '\n' + t.dev + (lang === 'en' ? ': ' : '：') + p.code + ': ' + p.error;
+}
+function asrFailed(code) {
+  const safe = asrSafeFailure(code);
+  asrProblem = { ...safe, at: new Date().toISOString() };
+  logProblem(safe.code, safe.error);
+  return safe;
 }
 function installAsr() {
   if (asrInstalling) return asrInstalling;
@@ -202,7 +222,7 @@ function installAsr() {
       const d = await cindy.downloads.start({ id: asrDownloadId(it.name), url: it.url, sha256: it.sha256, bytes: it.bytes });
       if (!d || !d.ok) {
         const code = (d && d.errorCode) || 'DOWNLOAD_FAILED';
-        channel.postMessage({ type: 'asr-progress', phase: 'failed', code, file: it.name });
+        channel.postMessage({ type: 'asr-progress', phase: 'failed', code: asrSafeFailure(code).code, file: it.name });
         // nothing has reached the data folder: the worker installs only once every file has come
         return { ...asrFailed(code, it.name + ': ' + ((d && (d.message || d.errorCode)) || 'download failed')), file: it.name };
       }
@@ -215,10 +235,10 @@ function installAsr() {
       return { installed: true, files: out.installed, stillMissing: out.missing };
     } catch (e) {
       if (['SIZE_MISMATCH', 'SHA256_MISMATCH', 'BAD_ARCHIVE'].includes(e.code)) { asrCheckFailures++; asrRetryStamp = Date.now().toString(36); }
-      channel.postMessage({ type: 'asr-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED' });
+      channel.postMessage({ type: 'asr-progress', phase: 'failed', code: asrSafeFailure(e.code).code });
       return asrFailed(e.code || 'INSTALL_FAILED', String(e.message || e));
     }
-  })().finally(() => { asrInstalling = null; });
+  })().catch((e) => asrFailed(e && e.code)).finally(() => { asrInstalling = null; });
   return asrInstalling;
 }
 function onDownloadProgress(d) {

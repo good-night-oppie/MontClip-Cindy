@@ -203,3 +203,41 @@ test("「下了一半的文件已经清掉了」: a half-downloaded file handed 
   assert.throws(() => installAsr({ runtime, platform: "linux-x64", data, files: { "m.onnx": half }, tmpDir: data }), (e) => e.code === "SIZE_MISMATCH");
   assert.deepEqual(fs.readdirSync(data), [], "nothing in the data folder (it is also the staging folder's parent)");
 });
+
+
+test("ASR agent results and copied diagnostics never include raw local paths", async () => {
+  for (const code of ["BAD_ARCHIVE", "SHA256_MISMATCH", "EACCES"]) {
+    const h = host({ installCode: code });
+    const r = await h.tool();
+    assert.doesNotMatch(JSON.stringify(r), /Users|MontClip-Cindy|name/);
+    assert.doesNotMatch(h.ctx.asrCopyText(h.ctx.asrLastProblem()), /Users|MontClip-Cindy|name/);
+    assert.match(r.error, /[a-zA-Z\u4e00-\u9fff]/);
+  }
+});
+
+test("ASR copied diagnostics discard raw text and unrecognized codes even from an old problem", () => {
+  const ctx = load();
+  for (const raw of ["C:\\Users\\private-user\\Temp\\asr", "/home/private-user/asr", "\\\\server\\private-user\\file"]) {
+    const r = ctx.asrFailed(raw, raw);
+    assert.equal(r.code, "INSTALL_FAILED");
+    assert.ok(!JSON.stringify(r).includes("private-user"));
+    for (const lang of ["zh", "en"]) {
+      const copy = ctx.asrCopyText({ code: raw, error: raw }, lang);
+      assert.ok(!copy.includes("private-user"));
+      assert.ok(copy.includes("INSTALL_FAILED"));
+    }
+  }
+});
+
+test("ASR spec, confirm and download rejections stay inside the sanitized tool result", async () => {
+  for (const stage of ["spec", "confirm", "download"]) {
+    const h = host();
+    const fail = async () => { throw Object.assign(new Error("C:\\Users\\private-user\\Temp\\asr"), {code:"EACCES"}); };
+    if (stage === "spec") h.ctx.cindy.node.request = fail;
+    if (stage === "confirm") h.ctx.cindy.confirm = fail;
+    if (stage === "download") h.ctx.cindy.downloads.start = fail;
+    const r = await h.tool();
+    assert.equal(r.code, "INSTALL_FAILED", stage);
+    assert.doesNotMatch(JSON.stringify(r), /private-user|Users|Temp/);
+  }
+});
