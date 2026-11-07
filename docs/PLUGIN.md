@@ -87,7 +87,8 @@ Cindy itself (installs go through Deja first).
 
 ## Develop
 
-Version 0.5.1 includes the engine from main `6f537e49` (2026-11-04), including first-use
+The engine commit is pinned in `engine-lock.json` and written into the packed `SOURCE.json` at build
+time; don't restate it here or in `ghost.json` (it goes stale). Version 0.5.1's engine includes first-use
 import progress/selection and overlay closing fixes. Build from this branch before packing;
 `node/app/` is generated and must not be reused from an older build. Desktop-only assistant
 providers remain in the desktop shell; this plugin uses Cindy's assistant. Export recovery
