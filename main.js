@@ -132,7 +132,7 @@ const EXPORT_TEXT = {
       editor: '这次导出要剪辑器开着才能做，它没开或者还没准备好。打开右侧栏的「MontClip 剪辑器」，等时间线出来，再点〔重试〕。原片没有改动。',
       busy: '上一次导出还没做完，要等它做完才能开始这一个。把 MontClip 剪辑器切到前面，过半分钟再点〔重试〕。',
       noAnswer: 'MontClip 一直没有回应，这次没有做完。关掉剪辑器再打开，再点〔重试〕。原片没有改动。',
-      // P11 draft, 待 JJ 定稿 (2026-11-05): an export that stopped partway says so, and that exporting again is fine
+      // an export that stopped partway says so, and that exporting again is fine (JJ's final words, 2026-11-07, #19)
       stopped: '导出到一半停了，这次没导完。原片没有改动，可以再导一次：点〔重试〕。',
       projectChanged: '这个任务的项目在等你选文件夹时被换走了，再导一次。',
       other: '这次没有做完，出了个我们没预料到的问题。原片没有改动。再点〔重试〕；还不行，点〔复制问题信息〕发给我们。',
@@ -162,7 +162,7 @@ const EXPORT_TEXT = {
       editor: 'This export needs the editor open, and it isn\'t open or isn\'t ready yet. Open "MontClip editor" in the right sidebar, wait for the timeline, then click Retry. The original is unchanged.',
       busy: 'The last export hasn\'t finished, so this one can\'t start until it does. Bring the MontClip editor to the front and click Retry in half a minute.',
       noAnswer: 'MontClip didn\'t answer, so this didn\'t finish. Close the editor, open it again, then click Retry. The original is unchanged.',
-      stopped: 'The export stopped partway and didn\'t finish. The original is unchanged; you can export again: click Retry.',   // P11 draft, waiting for JJ
+      stopped: 'The export stopped partway and didn\'t finish. The original is unchanged; you can export again: click Retry.',   // JJ's final words, 2026-11-07 (#19)
       projectChanged: 'The project changed while you were choosing a folder. Export again.',
       other: 'This didn\'t finish because of a problem we didn\'t expect. The original is unchanged. Click Retry; if it still fails, use "Copy problem details" and send it to us.',
     },
@@ -624,7 +624,11 @@ channel.onmessage = async (e) => {
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)
-    else if (m.type === 'open-task') a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: String(m.session || ''), focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
+    else if (m.type === 'open-task') {
+      // An invalid explicit project task must never fall back to the foreground task.
+      if (typeof m.session !== 'string' || !m.session.trim() || m.session !== m.session.trim()) a = { ok: false, errorCode: 'INVALID_REQUEST' };
+      else a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: m.session, focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
+    }
     else if (m.type === 'ffmpeg-install') a = await installFfmpeg();   // the banner's button: the user's own click
     // the main view's 打开文件夹: always MontClip's exports folder — a page never names a path
     else if (m.type === 'open-folder') a = await node('montclip/open-folder', { folder: 'exports' });

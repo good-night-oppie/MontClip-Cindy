@@ -13,6 +13,17 @@ test("package contains the pinned engine and plugin, not the source repository",
     assert.equal(fs.existsSync(path.join(DIST, f)), false, f);
 });
 
+test("SOURCE.json names the plugin commit (and whether it was dirty) as well as the pinned engine", () => {
+  const { execFileSync } = require("node:child_process");
+  const src = JSON.parse(fs.readFileSync(path.join(DIST, "SOURCE.json"), "utf8"));
+  assert.deepEqual(src.engine, require(path.join(ROOT, "engine-lock.json")));
+  assert.equal(src.plugin.repository, "https://github.com/good-night-oppie/MontClip-Cindy.git");
+  assert.equal(src.plugin.commit, execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim());
+  assert.match(src.plugin.commit, /^[0-9a-f]{40}$/);
+  const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)engine", ":(exclude)dist"], { encoding: "utf8" }).trim() !== "";
+  assert.equal(src.plugin.dirty, dirty);
+});
+
 test("packed views preserve hidden status despite the flex layout", () => {
   const css = fs.readFileSync(path.join(DIST, "frame.css"), "utf8");
   // Author display:flex overrides the browser's default [hidden] rule.
@@ -91,4 +102,16 @@ test("built worker starts, serves editor assets and isolates task projects", { t
 
 test("the package carries the speech manifest the engine reads (desktop/asr-manifest.json)", () => {
   assert.ok(fs.readFileSync(path.join(ROOT, "engine", "desktop", "asr-manifest.json")).equals(fs.readFileSync(path.join(DIST, "node", "app", "desktop", "asr-manifest.json"))));
+});
+
+test("the package carries the license notices of the bundled assistant pane (LICENSES.md points at them)", () => {
+  const app = path.join(DIST, "node", "app");
+  const notices = ["agent-ui/upstream/LICENSE", "agent-ui/upstream/NOTICE", "agent-ui/cindy-43001ea/LICENSE", "agent-ui/cindy-43001ea/NOTICE",
+    "agent-ui/THIRD-PARTY-NOTICES.txt", "agent-ui/BUNDLED-LICENSES.json", "agent-ui/BUNDLED-PACKAGES.json", "agent-ui/SOURCES.json",
+    "agent-ui/licenses/react-remove-scroll-bar.LICENSE"];
+  assert.match(fs.readFileSync(path.join(app, "LICENSES.md"), "utf8"), /agent-ui\/THIRD-PARTY-NOTICES\.txt/);
+  for (const rel of notices) {
+    assert.ok(fs.readFileSync(path.join(app, rel)).equals(fs.readFileSync(path.join(ROOT, "engine", rel))), rel);
+  }
+  assert.equal(fs.existsSync(path.join(app, "agent-ui", "pane.tsx")), false, "sources stay out");
 });

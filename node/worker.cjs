@@ -15,7 +15,7 @@ const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
-  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb } = require("./lib.cjs");
+  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, externalFfmpegSettings } = require("./lib.cjs");
 
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
 
@@ -117,6 +117,11 @@ async function boot() {
     MONTCLIP_FFMPEG_REMEDY: "In Cindy, install it from the MontClip editor tab's banner, or ask the chat to run montclip_install_ffmpeg.",
     MONTCLIP_ASR_DIR: ASR_DIR, MONTCLIP_ASR_MODELS_DIR: ASR_MODELS_DIR,
   });
+  // The user's own FFmpeg with libx264, for H.264 export only (engine external-ffmpeg.js, ADR-005): the settings file
+  // lives in the plugin's settings folder, never in DATA where the engine writes. No file → none, as before.
+  const extSettings = externalFfmpegSettings(DATA);
+  if (extSettings) process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS = extSettings;
+  else delete process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS;
   require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
   started = { origin: `http://127.0.0.1:${port}`, port, token };
   let up = false;
