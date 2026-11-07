@@ -150,7 +150,8 @@ function freeName(dir, name) {
   throw new Error("no free file name in " + dir);
 }
 /** Copy `files` into `dir`, never over an existing file: each goes to a private .part first and is linked when complete,
- *  so the folder never shows half a file. `tick(bytes)` is called as bytes arrive (the worker shows it's alive). */
+ *  so supported disks publish atomically. Other disks use an exclusive copy; its final name can be visible
+ *  while copying, but it is not reported as delivered until the copy completes. `tick(bytes)` is called as bytes arrive (the worker shows it's alive). */
 async function deliverFiles(files, dir, tick = () => { }) {
   if (!dir || !path.isAbsolute(dir) || !fs.statSync(dir, { throwIfNoEntry: false })?.isDirectory())
     throw Object.assign(new Error("the folder to export into is not there"), { code: "NO_FOLDER" });
@@ -172,7 +173,16 @@ async function deliverFiles(files, dir, tick = () => { }) {
       });
       // link is an atomic no-replace publication; a name chosen before the copy may now be taken.
       for (;;) {
-        try { fs.linkSync(part, to); break; }
+        try {
+          try { fs.linkSync(part, to); }
+          catch (e) {
+            if (!["ENOTSUP", "EOPNOTSUPP", "EPERM", "ENOSYS", "EXDEV"].includes(e.code)) throw e;
+            // exFAT/FAT32 have no hard links. COPYFILE_EXCL refuses concurrent destinations;
+            // Node closes and attempts removal of its newly-created file if copying fails.
+            await fs.promises.copyFile(part, to, fs.constants.COPYFILE_EXCL);
+          }
+          break;
+        }
         catch (e) {
           if (e.code !== 'EEXIST') throw e;
           name = freeName(dir, path.basename(f)); to = path.join(dir, name);
