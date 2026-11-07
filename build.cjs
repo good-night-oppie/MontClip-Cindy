@@ -27,7 +27,7 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 }
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
-for (const f of ["worker.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
+for (const f of ["worker.cjs", "lib.cjs", "asr-install.cjs", "asr-runtime.json"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
 fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ engine: lock }, null, 2) + "\n");
 // the engine and the editor page; dev tooling, tests, docs and the Electron shell stay out
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);

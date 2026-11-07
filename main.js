@@ -97,7 +97,135 @@ function installFfmpeg() {
   })().finally(() => { installing = null; });
   return installing;
 }
+/* On-device transcription (P8, Deja 2026-11-05): the speech engine, the VAD and the Paraformer model are downloaded the
+   first time, from MontClip's own GitHub release only (node/asr-runtime.json pins url, SHA-256 and bytes), and only
+   after the user said yes in the host's own confirm box — where from, how big, under which licences. Nothing is
+   fetched before that, and a no is not asked again in other words. The worker measures every file again and puts
+   them in place all together or not at all. One install at a time. */
+let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
+const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
+/* The words of the first-use download (JJ's final ones, 2026-11-05): the confirm box and its buttons, the status card's
+   button and what the card says after it. The plugin's pages are Chinese for now; the English is kept for when they
+   follow the interface language (JJ's English box is longer than the host shows: MontClip-Cindy#8). A button named in
+   a sentence comes from its key here, never copied by hand. */
+var ASR_TEXT = {   // var: the tests read it from main.js's own scope
+  zh: {
+    what: { both: '听写程序和中文听写模型', model: '中文听写模型', engine: '听写程序' },
+    lead: (what, mb) => '要把说的话转成文字，先要下载' + what + '，共约 ' + mb + ' MB，只下这一次。',
+    from: (host) => '从哪下：GitHub 上 MontClip 的发布页（github.com，下载时会转到 ' + host + '）。',
+    only: '只下载这些文件，不会发出你的录像、字幕或项目。下载完会逐个核对，对不上就不装。',
+    // cindy.confirm shows plain text only (no link, nothing to expand), so the licences are named here, one by one
+    licence: { lead: '许可：', sep: '、', end: '。', sherpa: 'sherpa-onnx（Apache-2.0，内含 ONNX Runtime，MIT）', silero: 'silero VAD（MIT）', paraformer: 'Paraformer 中文模型（Apache-2.0）' },
+    yes: '下载', no: '先不下',   // JJ, option A: no size on the button, only in the first line
+    button: '下载听写程序和模型…',
+    installed: '听写程序和模型装好了，现在可以把说的话转成文字。',
+    declined: (button) => '没有下载。以后要用，再点〔' + button + '〕就行。',
+    tooOld: 'Cindy 版本太旧，没法先问你再下载，所以没有下载。把 Cindy 更新到最新版以后，再点一次。',
+    failed: '这次没装上，下了一半的文件已经清掉了。再点一次试试。',
+    // shown only once the card has a 〔复制问题信息〕 button (ASR_COPY_BUTTON); it has none yet
+    failedMore: '还不行，点〔复制问题信息〕发给我们。',
+    dev: '给开发者看（不用管）',
+  },
+  en: {
+    // JJ's shorter English (2026-11-05): within the host's 300 characters; one bracket for the licences (QQ to say if each
+    // component needs its own — then "Files are checked first." goes to make room)
+    what: { both: 'program + Chinese model', model: 'Chinese model', engine: 'program' },
+    lead: (what, mb) => 'Speech-to-text needs a one-time download (' + what + ', about ' + mb + ' MB).',
+    from: (host) => 'From: github.com, via ' + host + '.',
+    only: 'Your videos, captions and projects are never sent. Files are checked first.',
+    licence: { lead: 'Licences: ', sep: ', ', end: ').', open: ' (', sherpa: 'sherpa-onnx, ONNX Runtime', silero: 'silero VAD', paraformer: 'Paraformer',
+      of: { sherpa: ['Apache-2.0', 'MIT'], silero: ['MIT'], paraformer: ['Apache-2.0'] } },
+    yes: 'Download', no: 'Not now',
+    button: 'Download transcription program and model…',
+    installed: 'The transcription program and model are installed. You can now turn speech into text.',
+    declined: (button) => 'Nothing was downloaded. To use it later, click “' + button + '”.',
+    tooOld: 'This version of Cindy is too old to ask you first, so nothing was downloaded. Update Cindy to the latest version, then click again.',
+    failed: "It didn't install this time, and the partly downloaded files were removed. Try again.",
+    failedMore: 'If it still fails, click “Copy problem details” and send it to us.',
+    dev: 'For developers (you can ignore this)',
+  },
+};
+const ASR_COPY_BUTTON = false;   // the status card has no 〔复制问题信息〕 yet: failedMore waits for it
+const asrWords = (lang) => ASR_TEXT[lang === 'en' ? 'en' : 'zh'];
+/** The confirm box for what this computer still needs: {body, confirmText, cancelText}. N is the worker's spec.mb (the
+ *  engine's aboutMb); the file host is the worker's spec.fileHost — the one ghost.json declares besides github.com. */
+function asrConsent(spec, lang) {
+  const t = asrWords(lang), mb = Math.max(10, +spec.mb || 0), has = (re) => spec.missing.some((i) => re.test(i.name));
+  const model = has(/paraformer/i), engine = has(/sherpa|silero/i);
+  const parts = [has(/sherpa/i) && 'sherpa', has(/silero/i) && 'silero', model && 'paraformer'].filter(Boolean);
+  // zh names each component with its licence; JJ's English names them, then one bracket of their licences
+  const licence = t.licence.of
+    ? t.licence.lead + parts.map((k) => t.licence[k]).join(t.licence.sep) + t.licence.open +
+      ['Apache-2.0', 'MIT'].filter((l) => parts.some((k) => t.licence.of[k].includes(l))).join('/') + t.licence.end
+    : t.licence.lead + parts.map((k) => t.licence[k]).join(t.licence.sep) + t.licence.end;
+  return {
+    body: [t.lead(engine && model ? t.what.both : model ? t.what.model : t.what.engine, mb), t.from(spec.fileHost), t.only, licence].join('\n'),
+    confirmText: t.yes, cancelText: t.no,
+  };
+}
+/** What the status card says after its button: installed, declined (ASR_TEXT no), a Cindy too old to ask, or a failure (no code). */
+function asrResultText(r, lang) {
+  const t = asrWords(lang);
+  if (r.installed) return t.installed;
+  if (r.declined) return t.declined(t.button);
+  if (r.code === 'HOST_TOO_OLD') return t.tooOld;
+  return t.failed + (ASR_COPY_BUTTON ? (lang === 'en' ? ' ' : '') + t.failedMore : '');
+}
+/* The last failure, for the 「给开发者看（不用管）」 line of a copy (the card never shows a code). */
+let asrProblem = null;
+function asrLastProblem() { return asrProblem; }
+function asrCopyText(problem, lang) {
+  const t = asrWords(lang), p = problem || {};
+  return t.failed + '\n' + t.dev + (lang === 'en' ? ': ' : '：') + (p.code || 'UNKNOWN') + ': ' + String(p.error == null ? '' : p.error);
+}
+function asrFailed(code, error) {
+  asrProblem = { code, error: String(error || ''), at: new Date().toISOString() };
+  logProblem(code, error || code);
+  return { error: String(error || code), code };
+}
+function installAsr() {
+  if (asrInstalling) return asrInstalling;
+  asrInstalling = (async () => {
+    const spec = await node('montclip/asr-spec');
+    if (!spec.supported) return asrFailed('UNSUPPORTED_PLATFORM', 'MontClip has no speech engine for ' + spec.platform);
+    if (!spec.missing.length) return { installed: true, already: true };
+    if (typeof cindy.confirm !== 'function' || typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
+      return { error: 'This Cindy cannot ask before downloading, or cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
+    const asked = await cindy.confirm(asrConsent(spec, 'zh'));
+    if (!asked || !asked.ok) return asrFailed('NOT_ASKED', 'Could not ask the user (' + ((asked && asked.errorCode) || 'no answer') + '); nothing was downloaded.');
+    if (!asked.confirmed) return { declined: true, note: 'The user chose 〔' + ASR_TEXT.zh.no + '〕: nothing was downloaded. Do not ask again unless she asks for it. ' +
+      'She can open the download again herself: the button 〔' + ASR_TEXT.zh.button + '〕 on the 「听写」 line of the status card (montclip_status shows it), or by asking you to run montclip_install_asr.' };
+    channel.postMessage({ type: 'asr-progress', phase: 'queued' });
+    const tokens = {};
+    for (let k = 0; k < spec.missing.length; k++) {
+      const it = spec.missing[k];
+      const d = await cindy.downloads.start({ id: asrDownloadId(it.name), url: it.url, sha256: it.sha256, bytes: it.bytes });
+      if (!d || !d.ok) {
+        const code = (d && d.errorCode) || 'DOWNLOAD_FAILED';
+        channel.postMessage({ type: 'asr-progress', phase: 'failed', code, file: it.name });
+        // nothing has reached the data folder: the worker installs only once every file has come
+        return { ...asrFailed(code, it.name + ': ' + ((d && (d.message || d.errorCode)) || 'download failed')), file: it.name };
+      }
+      tokens['f' + k] = d.token;
+    }
+    channel.postMessage({ type: 'asr-progress', phase: 'installing' });
+    try {
+      const out = await node('montclip/asr-install', { names: spec.missing.map((i) => i.name) }, { downloadTokens: tokens, timeoutMs: 600000 });
+      channel.postMessage({ type: 'asr-progress', phase: 'installed' });
+      return { installed: true, files: out.installed, stillMissing: out.missing };
+    } catch (e) {
+      if (['SIZE_MISMATCH', 'SHA256_MISMATCH', 'BAD_ARCHIVE'].includes(e.code)) { asrCheckFailures++; asrRetryStamp = Date.now().toString(36); }
+      channel.postMessage({ type: 'asr-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED' });
+      return asrFailed(e.code || 'INSTALL_FAILED', String(e.message || e));
+    }
+  })().finally(() => { asrInstalling = null; });
+  return asrInstalling;
+}
 function onDownloadProgress(d) {
+  if (d && String(d.id || '').startsWith('asr-')) {
+    if (d.phase !== 'failed' && d.phase !== 'cancelled') channel.postMessage({ type: 'asr-progress', phase: d.phase, id: d.id, loaded: d.loaded, total: d.total, speedBps: d.speedBps });
+    return;
+  }
   if (!d || !String(d.id || '').startsWith('ffmpeg-')) return;
   lastDownloadPhase = d.phase;
   // how it ended is said once, with its code, by installFfmpeg (Cindy's own failed / cancelled carry none)
@@ -328,18 +456,24 @@ function statusCardHeight(s, editorOpen) {
   const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
-  return Math.min(900, Math.max(120, 24 + 26 + rows + note + (editorOpen ? 0 : 42) + 6));
+  // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
+  const asrButton = s.asr && !(s.asr.engine && s.asr.model) ? 52 : 0;
+  return Math.min(900, Math.max(120, 24 + 26 + rows + note + asrButton + (editorOpen ? 0 : 42) + 6));
 }
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
-  // the column, and wrapped at 280 px), so the values form one column
-  const row = (k, v, { hint = '', note = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
-    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') + '</span></div>';
+  // the column, and wrapped at 280 px), so the values form one column; a line's small note and its button sit under its
+  // value, in that column
+  const row = (k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
+    (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
     row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
-    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr) }) +
+    // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
+    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: s.asr && !(s.asr.engine && s.asr.model)
+      ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
 }
@@ -512,6 +646,8 @@ const HANDLERS = {
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
+  /* Transcription's engine and model: the user is asked in the host's confirm box first; a no downloads nothing. */
+  async montclip_install_asr() { return installAsr(); },
   /* Open (or focus) the editor as this task's own tab in the task's right sidebar. */
   async montclip_open_task_view(args, msg) {
     if (typeof cindy.taskView !== 'function') return { error: 'This Cindy has no task views; update Cindy.' };
@@ -528,6 +664,14 @@ cindy.onHostMessage(async function (msg) {
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
       html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
         (r && r.ok ? '剪辑器已在右侧栏打开。' : openEditorFailed(r && (r.message || r.errorCode), r && r.errorCode)) + '</div>' });
+    return;
+  }
+  // 下载听写程序和模型 on the status card: a real click; installAsr still asks in the host's confirm box first
+  if (msg.type === 'event' && msg.name === 'card-action' && msg.actionId === 'install-asr') {
+    const r = await installAsr();
+    const say = esc(asrResultText(r, 'zh'));   // never the code: that is the agent's, and the copy line's
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, height: 90,
+      html: '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' + say + '</div>' });
     return;
   }
   // 打开文件夹 on an export card: the worker opens it, and only the exports folder or the folder that export went into

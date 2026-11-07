@@ -1,0 +1,31 @@
+{
+  "comment": "On-device transcription for the plugin (Deja's decision on P8, 2026-11-05): downloaded the first time it is needed, only after the user agreed in the host's confirm box, only from this GitHub release of good-night-oppie/MontClip (the files as published upstream, unchanged; `origin` says where each was taken from). The worker checks bytes and SHA-256 again and installs into the data folder: asr/ (engine, VAD) and asr-models/ (the model), whole or not at all. The model and the VAD are the ones engine/desktop/asr-manifest.json pins. Licences: the texts in engine/licenses/asr/ (LICENSES.md).",
+  "release": "asr-runtime-2.0.1-montclip1",
+  "base": "https://github.com/good-night-oppie/MontClip/releases/download/asr-runtime-2.0.1-montclip1/",
+  "items": [
+    { "name": "sherpa-onnx-node-2.0.1.tgz", "kind": "npm", "into": "asr/engine/node_modules/sherpa-onnx-node", "platforms": ["linux-x64", "win32-x64"],
+      "bytes": 12709, "sha256": "06ef8dfb9ea0f3cc77c1866620cbe05bf11b7dd70a973a454b77ce4a66cbcee1",
+      "license": "Apache-2.0", "licenseFiles": ["licenses/asr/sherpa-onnx-Apache-2.0.txt"],
+      "origin": "https://registry.npmjs.org/sherpa-onnx-node/-/sherpa-onnx-node-2.0.1.tgz (npm integrity sha512-1PSACfQgPXAD7ExwCv1QW09EXTjcNlpZKBqDY+jxSdIzlyOSq0M13SILBoUQUfeJqiTTXnqp6Ha9jjMUQ6efXg==)" },
+    { "name": "sherpa-onnx-linux-x64-2.0.1.tgz", "kind": "npm", "into": "asr/engine/node_modules/sherpa-onnx-linux-x64", "platforms": ["linux-x64"],
+      "bytes": 11005484, "sha256": "08c6fe2b65838febbd0c260aaa9991990d2d592e503e758bfd2f5db6cbc79338",
+      "license": "Apache-2.0 (bundles ONNX Runtime, MIT)", "licenseFiles": ["licenses/asr/sherpa-onnx-Apache-2.0.txt", "licenses/asr/onnxruntime-MIT.txt"],
+      "origin": "https://registry.npmjs.org/sherpa-onnx-linux-x64/-/sherpa-onnx-linux-x64-2.0.1.tgz (npm integrity sha512-w5mRRrIvPvcNWac7rQ8AN/t/cwElPGoRpH+ceCRBV7XfjCIQ9Rcr3Ig/kXcJLNOxgK4bGmef+Y47lIWiesDODw==)" },
+    { "name": "sherpa-onnx-win-x64-2.0.1.tgz", "kind": "npm", "into": "asr/engine/node_modules/sherpa-onnx-win-x64", "platforms": ["win32-x64"],
+      "bytes": 8779375, "sha256": "217cec234c6026dbfd2b9c06523507180796fe4227c7cc9d11cfe218260a2519",
+      "license": "Apache-2.0 (bundles ONNX Runtime, MIT)", "licenseFiles": ["licenses/asr/sherpa-onnx-Apache-2.0.txt", "licenses/asr/onnxruntime-MIT.txt"],
+      "origin": "https://registry.npmjs.org/sherpa-onnx-win-x64/-/sherpa-onnx-win-x64-2.0.1.tgz (npm integrity sha512-7vwdAw9PGEb0JLSpK7UFxAdp1vabBHK9Nhw2jFRBWSFgtslUPHIB0T6syJfRgiUGyCeNW9fJvcFAk2F2u7hBEw==)" },
+    { "name": "silero_vad.onnx", "kind": "file", "into": "asr/silero_vad.onnx", "platforms": ["linux-x64", "win32-x64"],
+      "bytes": 643854, "sha256": "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
+      "license": "MIT", "licenseFiles": ["licenses/asr/silero-vad-MIT.txt"],
+      "origin": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx" },
+    { "name": "paraformer-zh-2023-09-14-model.int8.onnx", "kind": "file", "into": "asr-models/asr/model.int8.onnx", "platforms": ["linux-x64", "win32-x64"],
+      "bytes": 243371218, "sha256": "f36a0433bcf096bd6d6f11b80a3ac8bed110bdca632fe0d731df8d1a84475945",
+      "license": "Apache-2.0", "licenseFiles": ["licenses/asr/paraformer-zh-Apache-2.0.txt"],
+      "origin": "https://hf-mirror.com/csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14/resolve/def027084691107096b5ebba69785756d63de6c5/model.int8.onnx" },
+    { "name": "paraformer-zh-2023-09-14-tokens.txt", "kind": "file", "into": "asr-models/asr/tokens.txt", "platforms": ["linux-x64", "win32-x64"],
+      "bytes": 75756, "sha256": "59aba8873a2ed1e122c25fee421e25f283b63290efbde85c1f01a853d83cb6e6",
+      "license": "Apache-2.0", "licenseFiles": ["licenses/asr/paraformer-zh-Apache-2.0.txt"],
+      "origin": "https://hf-mirror.com/csukuangfj/sherpa-onnx-paraformer-zh-2023-09-14/resolve/def027084691107096b5ebba69785756d63de6c5/tokens.txt" }
+  ]
+}

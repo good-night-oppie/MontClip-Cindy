@@ -98,7 +98,7 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
     const page = path.join(dir, `card-${width}-${cases.findIndex((c) => c[0] === what)}.html`);
     fs.writeFileSync(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;width:${width}px;font:13px system-ui,sans-serif">${card}` +
       `<script>const root=document.body.firstElementChild, rows=[...root.querySelectorAll('div[style*="display:flex"]')];` +
-      `const btn=root.querySelector('button'), r=root.getBoundingClientRect(), b=btn?btn.getBoundingClientRect():null;` +
+      `const btns=root.querySelectorAll('button'), btn=btns[btns.length-1], r=root.getBoundingClientRect(), b=btn?btn.getBoundingClientRect():null;` +
       `document.body.setAttribute('data-m', JSON.stringify({values: rows.map(x=>x.children[1].getBoundingClientRect().left), labelLines: rows.map(x=>{const g=document.createRange();g.selectNodeContents(x.children[0]);return new Set([...g.getClientRects()].map(q=>Math.round(q.top))).size;}), bottomGap: b ? r.bottom-b.bottom : null, height: r.height}));</script></body>`);
     const out = execFileSync(BROWSER, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${path.join(dir, "profile")}`,
       `--window-size=${width},800`, "--dump-dom", "file:///" + page.replace(/\\/g, "/")], { encoding: "utf8", timeout: 60000 });
