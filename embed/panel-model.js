@@ -78,10 +78,20 @@
     { key: "filterPreset", zh: "滤镜", en: "Filter", kinds: ["video", "image", "svg", "adjust"], value: (v) => String(v) },
     { key: "textAnim", zh: "文字动画", en: "Text animation", kinds: TEXT, value: (v) => String(v) },
   ];
-  /** A keyframed channel's plain name (the 关键帧 row; x and y are 位置); one not among the 15 keeps its key. */
+  // Keyframe channels beyond the summary's 15 common properties. Never show an internal key.
+  const CHANNEL_NAMES = {
+    duck: ["自动压低音量（分贝）", "Auto-duck (dB)"], hue: ["色相（度）", "Hue (degrees)"], blur: ["模糊（像素）", "Blur (px)"],
+    brightness: ["亮度（%）", "Brightness (%)"], contrast: ["对比度（%）", "Contrast (%)"], saturation: ["饱和度（%）", "Saturation (%)"],
+    grayscale: ["灰度（%）", "Grayscale (%)"], sepia: ["褐色（%）", "Sepia (%)"], invert: ["反色（%）", "Invert (%)"],
+    temperature: ["色温", "Temperature"], tint: ["色调", "Tint"], vignette: ["暗角（%）", "Vignette (%)"],
+    cornerRadius: ["圆角（像素）", "Corner radius (px)"], shake: ["抖动", "Shake"], rgbSplit: ["色彩分离", "Color split"], grain: ["颗粒", "Grain"],
+    letterSpacing: ["字间距（像素）", "Letter spacing (px)"], glow: ["发光", "Glow"], anchorX: ["横向锚点", "Horizontal anchor"], anchorY: ["纵向锚点", "Vertical anchor"],
+    trimStart: ["路径起点", "Path start"], trimEnd: ["路径终点", "Path end"], trimOffset: ["路径偏移", "Path offset"], pathOffset: ["沿路径位置", "Position along path"],
+  };
   function propName(key, lang = "zh-CN") {
+    if (CHANNEL_NAMES[key]) return CHANNEL_NAMES[key][zh(lang) ? 0 : 1];
     const p = PROPS.find((x) => x.key === key || (x.from && x.from.includes(key)));
-    return p ? (zh(lang) ? p.zh : p.en) : key;
+    return p ? (zh(lang) ? p.zh : p.en) : (zh(lang) ? "其他属性" : "Other property");
   }
   /** [[name, value, swatch?], …] for the clip's kind, in JJ's order. `name` is what the 名称 row already says: the
    *  text is not repeated when it is that. */
