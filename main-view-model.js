@@ -56,5 +56,28 @@
     },
     openFolder: (e, code) => failure("没能打开导出文件夹。", "再点一次试试", e, code),   // waiting for JJ
   };
-  return { projectRows, exportRows, size, exportsWhere, failure, COPY, FAILED };
+  // Draft keys for JJ. A host acknowledgement is not proof of a visible editor.
+  const OPEN_TASK_COPY = {
+    "overview.focus-requested": {
+      zh: "已请求切换到这个任务。请查看右侧的 MontClip 剪辑器，时间线出现后再继续。",
+      en: "A switch to this task was requested. Check the MontClip editor on the right and wait for the timeline before continuing."
+    },
+    "overview.focus-unconfirmed": {
+      zh: "Cindy 没有确认切换到这个任务。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器；也可以检查 Cindy 是否有更新。",
+      en: "Cindy did not confirm a switch to this task. Open the matching task from the task list, then ask the AI to open the MontClip editor. You can also check for Cindy updates."
+    },
+    "overview.open-failed": {
+      zh: "这次没能打开任务剪辑器。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器。",
+      en: "The task editor could not be opened this time. Open the matching task from the task list, then ask the AI to open the MontClip editor."
+    }
+  };
+  function taskOpenResult(reply, session, language = "zh") {
+    const valid = typeof session === "string" && session.length > 0 && session === session.trim();
+    const state = !valid || !reply || reply.ok !== true ? "failed"
+      : reply.sessionId === session && reply.focusRequested === true ? "requested" : "unconfirmed";
+    const key = state === "requested" ? "overview.focus-requested"
+      : state === "unconfirmed" ? "overview.focus-unconfirmed" : "overview.open-failed";
+    return { state, key, text: OPEN_TASK_COPY[key][language === "en" ? "en" : "zh"] };
+  }
+  return { projectRows, exportRows, size, exportsWhere, failure, COPY, FAILED, taskOpenResult, OPEN_TASK_COPY };
 });
