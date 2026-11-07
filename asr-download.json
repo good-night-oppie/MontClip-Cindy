@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "tool": {
+    "name": "montclip_install_asr",
+    "description": "下载并安装本机听写要用的程序和中文模型（只在用户要听写、montclip_status 说还没装时用）。先弹 Cindy 的确认框给用户看来源、大小、许可，用户点「下载」才从 MontClip 在 github.com 的发布页下载；点「先不下」就什么都不下，不要换个说法再问。下载完逐个核对大小和 SHA-256，全部对上才装。",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  }
+}

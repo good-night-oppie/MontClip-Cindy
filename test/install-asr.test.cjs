@@ -38,7 +38,7 @@ test("the runtime list: MontClip's own GitHub release only, every file pinned, e
   const g = JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"));
   assert.ok(!g.network.hosts.some((h) => /npmjs|npmmirror|hf-mirror|huggingface/.test(h)), "no other download hosts");
   assert.equal(g.confirm, true, "the host's confirm box is declared");
-  assert.ok(g.tools.some((t) => t.name === "montclip_install_asr"));
+  assert.ok(!g.tools.some((t) => t.name === "montclip_install_asr"), "unreleased download tool is not registered by default");
 });
 
 /* A small runtime: an npm-style tarball (package/…), a VAD and two model files, made here. */
@@ -114,7 +114,7 @@ function host({ answer = true, confirm = true, missing } = {}) {
   };
   if (confirm) cindy.confirm = async (p) => { asked.push(p); return { ok: true, confirmed: answer }; };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() {} }
-  vm.runInNewContext(MAIN, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL });
+  vm.runInNewContext(MAIN.replace('/* build:asr-download */ false', '/* build:asr-download */ true'), { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL });
   const install = () => new Promise((resolve) => {
     const callId = "c1";
     cindy.send = async (m) => { if (m.type === "tool-result" && m.callId === callId) resolve(m.result); return { ok: true }; };
@@ -162,7 +162,7 @@ test("the button sits on the status card's 「听写」 line while something is 
   const ctx = {};
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
-  vm.runInNewContext(MAIN, Object.assign(ctx, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL }));
+  vm.runInNewContext(MAIN.replace('/* build:asr-download */ false', '/* build:asr-download */ true'), Object.assign(ctx, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL }));
   const card = (asr) => ctx.statusCard({ ffmpeg: "downloaded", project: "p", asr }, true);
   const line = (html) => html.split('<div style="display:flex').find((d) => /title="把说的话转成文字">听写</.test(d)) || "";
   const missing = line(card({ engine: false, model: false, modelBytes: 243446974 }));
@@ -202,4 +202,35 @@ test("the download folders: only data/asr and data/asr-models, never a folder th
   // an item that would go anywhere else is refused too
   const bad = { ...w.runtime, items: w.runtime.items.map((i, k) => (k ? i : { ...i, into: "media/sherpa-onnx-node" })) };
   assert.equal(placesOk(bad, "linux-x64", fs.mkdtempSync(path.join(w.dir, "d-"))).code, "ASR_DIR_REFUSED");
+});
+
+
+test("archive names refuse parent traversal, absolute paths and Windows drive names", () => {
+  const {safeArchiveName, tarPath} = require("../node/asr-install.cjs");
+  for(const n of ["../outside", "package/../outside", "/tmp/outside", "C:/outside", "package\\..\\outside"])
+    assert.equal(safeArchiveName(n), false, n);
+  assert.equal(safeArchiveName("package/lib/addon.node"), true);
+  assert.ok(path.isAbsolute(tarPath()));
+});
+
+test("extracted junctions and hardlinks are rejected before any package is installed", (t) => {
+  const { installAsr } = require("../node/asr-install.cjs");
+  for (const kind of ["root-link", "nested-link", "sibling-link", "hardlink"]) {
+    const w = world(t), outside = path.join(w.dir, "outside");
+    fs.mkdirSync(outside); fs.writeFileSync(path.join(outside, "package.json"), "sentinel");
+    const extract = (_archive, at) => {
+      const pkg = path.join(at, "package");
+      if (kind === "root-link") fs.symlinkSync(outside, pkg, process.platform === "win32" ? "junction" : "dir");
+      else {
+        fs.mkdirSync(pkg); fs.writeFileSync(path.join(pkg, "package.json"), "{}");
+        if(kind === "hardlink") fs.linkSync(path.join(outside, "package.json"), path.join(pkg, "linked"));
+        else fs.symlinkSync(outside, path.join(kind === "nested-link" ? pkg : at, "linked"), process.platform === "win32" ? "junction" : "dir");
+      }
+    };
+    assert.throws(() => installAsr({runtime:w.runtime, platform:"linux-x64", data:w.data, files:w.handed, tmpDir:w.dir, extract}), e => e.code === "BAD_ARCHIVE", kind);
+    assert.deepEqual(fs.readdirSync(w.data), []);
+    assert.equal(fs.readFileSync(path.join(outside, "package.json"), "utf8"), "sentinel");
+    assert.deepEqual(fs.readdirSync(outside), ["package.json"]);
+    assert.deepEqual(fs.readdirSync(w.dir).filter(n=>n.startsWith("montclip-asr-")), []);
+  }
 });

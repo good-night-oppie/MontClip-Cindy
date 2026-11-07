@@ -56,7 +56,7 @@ function load() {
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
   const ctx = { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL };
-  vm.runInNewContext(MAIN, ctx);
+  vm.runInNewContext(MAIN.replace('/* build:asr-download */ false', '/* build:asr-download */ true'), ctx);
   return ctx;
 }
 const GHOST = JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"));
@@ -153,7 +153,7 @@ function host({ answer = true, confirm = true, failDownloadAt = -1, installCode 
   if (confirm) cindy.confirm = async () => ({ ok: true, confirmed: answer });
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
   const ctx = { cindy, BroadcastChannel, console: { ...console, warn: () => { } }, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL };
-  vm.runInNewContext(MAIN, ctx);
+  vm.runInNewContext(MAIN.replace('/* build:asr-download */ false', '/* build:asr-download */ true'), ctx);
   const click = async () => { await listener({ type: "event", name: "card-action", actionId: "install-asr", callId: "k1", sessionId: "s1" }); return cards[cards.length - 1].html; };
   const tool = () => new Promise((resolve) => {
     const prev = cindy.send;

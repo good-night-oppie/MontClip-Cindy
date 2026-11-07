@@ -84,10 +84,41 @@ function planAsr(runtime, platform, data) {
     bytes: missing.reduce((n, i) => n + i.bytes, 0) };
 }
 
+function tarPath() {
+  if (process.platform !== "win32") return "/usr/bin/tar";
+  const root = process.env.SystemRoot || "C:\\Windows";
+  if (!path.isAbsolute(root)) throw Object.assign(new Error("Invalid system directory"), { code: "UNPACK_FAILED" });
+  return path.join(root, "System32", "tar.exe");
+}
+function safeArchiveName(name) {
+  const parts = name.replace(/\\/g, "/").split("/");
+  return !!name && !name.startsWith("/") && !name.startsWith("\\") && !name.includes(":") && !parts.includes("..");
+}
 function extractTgz(archive, into) {
-  const tar = process.platform === "win32" ? path.join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe") : "tar";
-  const t = spawnSync(tar, ["-xzf", archive, "-C", into], { encoding: "utf8", windowsHide: true });
-  if (t.status !== 0) throw Object.assign(new Error("unpacking failed: " + (t.stderr || t.error)), { code: "UNPACK_FAILED" });
+  const tar = tarPath();
+  const run = (args) => {
+    const t = spawnSync(tar, args, { encoding: "utf8", windowsHide: true });
+    if (t.status !== 0) throw Object.assign(new Error("Unable to unpack the speech program"), { code: "UNPACK_FAILED" });
+    return t.stdout;
+  };
+  const names = run(["-tzf", archive]).split(/\r?\n/).filter(Boolean);
+  if (!names.length || names.some((n) => !safeArchiveName(n))) throw Object.assign(new Error("Unsafe archive entry"), { code: "BAD_ARCHIVE" });
+  // Reject links and special files before extraction; the walk below verifies the resulting filesystem too.
+  const listing = run(["-tvzf", archive]).split(/\r?\n/).filter(Boolean);
+  if (listing.some((line) => !["-", "d"].includes(line[0]))) throw Object.assign(new Error("Unsupported archive entry"), { code: "BAD_ARCHIVE" });
+  run(["-xzf", archive, "-C", into]);
+}
+function checkExtracted(root) {
+  const base = fs.realpathSync(root);
+  const walk = (p) => {
+    const st = fs.lstatSync(p);
+    const rel = path.relative(base, fs.realpathSync(p));
+    if (st.isSymbolicLink() || (rel && (rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel))) ||
+        (!st.isDirectory() && !st.isFile()) || (st.isFile() && st.nlink > 1))
+      throw Object.assign(new Error("Unsafe extracted entry"), { code: "BAD_ARCHIVE" });
+    if (st.isDirectory()) for (const n of fs.readdirSync(p)) walk(path.join(p, n));
+  };
+  walk(root);
 }
 /** rename, or copy and delete when the two are on different drives */
 function move(from, to) {
@@ -122,6 +153,7 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
       if (it.kind === "npm") {
         fs.mkdirSync(at);
         extract(files[it.name], at);
+        checkExtracted(at);
         const pkg = path.join(at, "package");
         if (!fs.existsSync(path.join(pkg, "package.json"))) throw Object.assign(new Error(it.name + " is not an npm package"), { code: "BAD_ARCHIVE", file: it.name });
         fs.writeFileSync(path.join(pkg, MARK), JSON.stringify({ name: it.name, sha256: it.sha256, release: runtime.release }) + "\n");
@@ -142,4 +174,4 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
   } finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { planAsr, installAsr, placesOk, sha256File, DENY, ALLOW };
+module.exports = { tarPath, safeArchiveName, checkExtracted, planAsr, installAsr, placesOk, sha256File, DENY, ALLOW };

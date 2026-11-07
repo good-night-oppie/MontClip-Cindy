@@ -102,6 +102,7 @@ function installFfmpeg() {
    after the user said yes in the host's own confirm box — where from, how big, under which licences. Nothing is
    fetched before that, and a no is not asked again in other words. The worker measures every file again and puts
    them in place all together or not at all. One install at a time. */
+const ASR_DOWNLOAD_ENABLED = /* build:asr-download */ false;
 let asrInstalling = null, asrCheckFailures = 0, asrRetryStamp = '';
 const asrDownloadId = (name) => ('asr-' + String(name).replace(/[^\w-]+/g, '-') + (asrCheckFailures ? '-r' + asrCheckFailures + '-' + asrRetryStamp : '')).slice(0, 100);
 /* The words of the first-use download (JJ's final ones, 2026-11-05): the confirm box and its buttons, the status card's
@@ -166,6 +167,7 @@ function asrConsent(spec, lang) {
 /** What the status card says after its button: installed, declined (ASR_TEXT no), a Cindy too old to ask, or a failure (no code). */
 function asrResultText(r, lang) {
   const t = asrWords(lang);
+  if (r.code === 'ASR_DOWNLOAD_DISABLED') return lang === 'en' ? 'Transcription download is not available yet.' : '听写下载尚未开放。';
   if (r.installed) return t.installed;
   if (r.declined) return t.declined(t.button);
   if (r.code === 'HOST_TOO_OLD') return t.tooOld;
@@ -177,6 +179,7 @@ function asrLastProblem() { return asrProblem; }
 // Only fixed codes and fixed sentences may cross the agent/copy boundary. Never retain tar stderr,
 // host errors or unknown codes here: those can contain local paths, usernames or service details.
 const ASR_ERRORS = Object.freeze({
+  ASR_DOWNLOAD_DISABLED: '听写下载尚未开放。',
   UNSUPPORTED_PLATFORM: '这台电脑暂不支持安装听写程序。',
   HOST_TOO_OLD: '请先更新 Cindy，再安装听写程序。',
   NOT_ASKED: '没有完成下载确认，因此没有开始下载。',
@@ -204,6 +207,7 @@ function asrFailed(code) {
   return safe;
 }
 function installAsr() {
+  if (!ASR_DOWNLOAD_ENABLED) return Promise.resolve(asrFailed('ASR_DOWNLOAD_DISABLED'));
   if (asrInstalling) return asrInstalling;
   asrInstalling = (async () => {
     const spec = await node('montclip/asr-spec');
@@ -477,7 +481,7 @@ function statusCardHeight(s, editorOpen) {
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
-  const asrButton = s.asr && !(s.asr.engine && s.asr.model) ? 52 : 0;
+  const asrButton = ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model) ? 52 : 0;
   return Math.min(900, Math.max(120, 24 + 26 + rows + note + asrButton + (editorOpen ? 0 : 42) + 6));
 }
 function statusCard(s, editorOpen) {
@@ -492,7 +496,7 @@ function statusCard(s, editorOpen) {
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
     row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
-    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: s.asr && !(s.asr.engine && s.asr.model)
+    row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model)
       ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
     (editorOpen ? '' : '<div style="margin-top:10px"><button data-ghost-action="open-editor" style="font:inherit;padding:5px 12px;border-radius:6px;border:0;background:var(--accent,#4b3fd6);color:#fff">在这个任务里打开剪辑器</button></div>') +
     '</div>';
@@ -670,7 +674,7 @@ const HANDLERS = {
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
   /* Transcription's engine and model: the user is asked in the host's confirm box first; a no downloads nothing. */
-  async montclip_install_asr() { return installAsr(); },
+  ...(ASR_DOWNLOAD_ENABLED ? { async montclip_install_asr() { return installAsr(); } } : {}),
   /* Open (or focus) the editor as this task's own tab in the task's right sidebar. */
   async montclip_open_task_view(args, msg) {
     if (typeof cindy.taskView !== 'function') return { error: 'This Cindy has no task views; update Cindy.' };

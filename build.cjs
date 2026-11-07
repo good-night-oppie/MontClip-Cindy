@@ -25,6 +25,11 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
   if (e.isFile() && (e.name === "ghost.json" || e.name === "LICENSE" || /\.(js|html|css)$/.test(e.name)))
     fs.copyFileSync(path.join(__dirname, e.name), path.join(DIST, e.name));
 }
+// One author-controlled switch gates both the visible tool and the logic page. No network probe.
+const { applyAsrGate } = require('./tools/asr-build.cjs');
+const gated = applyAsrGate(fs.readFileSync(path.join(DIST, 'main.js'), 'utf8'), JSON.parse(fs.readFileSync(path.join(DIST, 'ghost.json'), 'utf8')), require('./asr-download.json'));
+fs.writeFileSync(path.join(DIST, 'main.js'), gated.main);
+fs.writeFileSync(path.join(DIST, 'ghost.json'), JSON.stringify(gated.manifest, null, 2) + '\n');
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
 for (const f of ["worker.cjs", "lib.cjs", "asr-install.cjs", "asr-runtime.json"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
