@@ -62,16 +62,33 @@ function hashOf(file) {
 }
 const forPlatform = (runtime, platform) => runtime.items.filter((i) => i.platforms.includes(platform));
 
-/** Is this item installed as pinned? A package: its marker names the tarball's SHA-256 (or, put there by hand, its
- *  package.json has the name and version of the tarball); a file: exact bytes and SHA-256. */
+/** Packages are complete only with a v2 inventory made from the verified archive. Hand-copied
+ *  packages and old archive-only markers must be installed again; name/version alone proves nothing. */
+function packageInventory(root) {
+  checkExtracted(root);
+  const files = [];
+  const walk = (dir, prefix) => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      if (!prefix && name === MARK) continue;
+      const file = path.join(dir, name), rel = prefix ? prefix + "/" + name : name;
+      const st = fs.lstatSync(file);
+      if (st.isDirectory()) walk(file, rel);
+      else files.push({ path: rel, bytes: st.size, sha256: sha256File(file) });
+    }
+  };
+  walk(root, "");
+  return files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+}
 function have(item, data) {
   const dest = path.join(data, item.into);
   try {
     if (item.kind === "npm") {
-      try { if (JSON.parse(fs.readFileSync(path.join(dest, MARK), "utf8")).sha256 === item.sha256) return true; } catch { }
-      const pkg = JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf8"));
-      const m = /^(.+)-(\d+\.\d+\.\d+)\.tgz$/.exec(item.name);
-      return !!m && pkg.name === m[1] && pkg.version === m[2];
+      const marker = path.join(dest, MARK), st = fs.lstatSync(marker);
+      if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1) return false;
+      const mark = JSON.parse(fs.readFileSync(marker, "utf8"));
+      if (mark.version !== 2 || mark.name !== item.name || mark.sha256 !== item.sha256 ||
+          !Array.isArray(mark.files) || !mark.files.some((f) => f.path === "package.json")) return false;
+      return JSON.stringify(mark.files) === JSON.stringify(packageInventory(dest));
     }
     return fs.statSync(dest).size === item.bytes && hashOf(dest) === item.sha256;
   } catch { return false; }
@@ -120,6 +137,30 @@ function checkExtracted(root) {
   };
   walk(root);
 }
+// Only direct children created by this installer are eligible. New names include the owner PID,
+// so another live worker's staging area is retained (PID reuse errs on the side of keeping files).
+function cleanupStaging(tmpDir) {
+  if (!fs.existsSync(tmpDir) || fs.lstatSync(tmpDir).isSymbolicLink()) return;
+  const base = real(tmpDir);
+  for (const name of fs.readdirSync(tmpDir)) {
+    const match = /^montclip-asr-(?:(\d+)-)?[A-Za-z0-9]{6}$/.exec(name);
+    if (!match) continue;
+    if (match[1]) {
+      try { process.kill(Number(match[1]), 0); continue; }
+      catch (e) { if (e.code !== "ESRCH") continue; }
+    }
+    const candidate = path.join(tmpDir, name);
+    let st;
+    try { st = fs.lstatSync(candidate); } catch (e) { if (e.code === "ENOENT") continue; throw e; }
+    if (!st.isDirectory() || st.isSymbolicLink()) continue;
+    const resolved = real(candidate);
+    if (resolved === base || !inside(resolved, base) || path.dirname(resolved) !== base) continue;
+    // A redirected or special entry anywhere in the tree makes the entire candidate ineligible.
+    try { checkExtracted(candidate); } catch { continue; }
+    if (real(candidate) !== resolved) continue;
+    fs.rmSync(candidate, { recursive: true, force: true });
+  }
+}
 /** rename, or copy and delete when the two are on different drives */
 function move(from, to) {
   try { fs.renameSync(from, to); }
@@ -134,6 +175,7 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
   if (!where.ok) throw Object.assign(new Error(where.why), { code: where.code });
   if (DENY.map((d) => real(path.join(data, d))).some((d) => inside(real(tmpDir), d)))
     throw Object.assign(new Error("the staging folder is inside a folder the server writes"), { code: "ASR_DIR_REFUSED" });
+  cleanupStaging(tmpDir);
   const todo = planAsr(runtime, platform, data).missing;
   // every file first: handed over, the pinned size, the pinned SHA-256 (measured here, not taken on trust)
   for (const it of todo) {
@@ -145,7 +187,7 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
     if (got !== it.sha256) throw Object.assign(new Error(`${it.name}: SHA-256 mismatch: got ${got}, pinned ${it.sha256}`), { code: "SHA256_MISMATCH", file: it.name });
   }
   fs.mkdirSync(tmpDir, { recursive: true });
-  const work = fs.mkdtempSync(path.join(tmpDir, "montclip-asr-"));
+  const work = fs.mkdtempSync(path.join(tmpDir, "montclip-asr-" + process.pid + "-"));
   try {
     // then all of them staged (unpacked / copied) before anything is put in place
     const staged = todo.map((it, k) => {
@@ -156,7 +198,7 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
         checkExtracted(at);
         const pkg = path.join(at, "package");
         if (!fs.existsSync(path.join(pkg, "package.json"))) throw Object.assign(new Error(it.name + " is not an npm package"), { code: "BAD_ARCHIVE", file: it.name });
-        fs.writeFileSync(path.join(pkg, MARK), JSON.stringify({ name: it.name, sha256: it.sha256, release: runtime.release }) + "\n");
+        fs.writeFileSync(path.join(pkg, MARK), JSON.stringify({ version: 2, name: it.name, sha256: it.sha256, release: runtime.release, files: packageInventory(pkg) }) + "\n");
         return { it, from: pkg };
       }
       fs.copyFileSync(files[it.name], at);
@@ -174,4 +216,4 @@ function installAsr({ runtime, platform, data, files, tmpDir, extract = extractT
   } finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 
-module.exports = { tarPath, safeArchiveName, checkExtracted, planAsr, installAsr, placesOk, sha256File, DENY, ALLOW };
+module.exports = { cleanupStaging, tarPath, safeArchiveName, checkExtracted, planAsr, installAsr, placesOk, sha256File, DENY, ALLOW };

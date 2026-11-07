@@ -16,7 +16,7 @@ const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, fileHostFrom, externalFfmpegSettings } = require("./lib.cjs");
-const { planAsr, installAsr, placesOk } = require("./asr-install.cjs");
+const { planAsr, installAsr, placesOk, cleanupStaging } = require("./asr-install.cjs");
 const asrRuntime = () => JSON.parse(fs.readFileSync(path.join(__dirname, "asr-runtime.json"), "utf8"));
 
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
@@ -178,9 +178,12 @@ const METHODS = {
   /* The speech engine, VAD and model this system still needs (node/asr-runtime.json): main.js asks the user, downloads
      them with cindy.downloads, and hands them to montclip/asr-install. */
   async "montclip/asr-spec"() {
-    const rt = asrRuntime(), plan = planAsr(rt, PLATFORM, DATA), where = placesOk(rt, PLATFORM, DATA);
+    const rt = asrRuntime(), where = placesOk(rt, PLATFORM, DATA);
     // nothing is asked or fetched when the folders are not the plugin's own (a link into media/ …)
     if (!where.ok) throw Object.assign(new Error(where.why), { code: where.code });
+    // Clean even when all files were installed just before the previous process exited.
+    cleanupStaging(DATA);
+    const plan = planAsr(rt, PLATFORM, DATA);
     // the file host the confirm box names: the one ghost.json declares besides github.com
     const fileHost = fileHostFrom(JSON.parse(fs.readFileSync(path.join(__dirname, "..", "ghost.json"), "utf8")));
     return { supported: plan.supported, platform: PLATFORM, release: rt.release, fileHost, bytes: plan.bytes, mb: aboutMbFrom(APP)(plan.bytes),

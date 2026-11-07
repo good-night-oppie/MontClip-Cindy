@@ -234,3 +234,53 @@ test("extracted junctions and hardlinks are rejected before any package is insta
     assert.deepEqual(fs.readdirSync(w.dir).filter(n=>n.startsWith("montclip-asr-")), []);
   }
 });
+
+
+test("next install removes interrupted staging only, retaining unrelated paths and redirected trees", (t) => {
+  const { installAsr } = require("../node/asr-install.cjs"), w = world(t);
+  const stale = path.join(w.data, "montclip-asr-ABC123"); fs.mkdirSync(stale); fs.writeFileSync(path.join(stale,"partial-model"),Buffer.alloc(4096));
+  const unrelated = path.join(w.data,"keep-me"); fs.mkdirSync(unrelated); fs.writeFileSync(path.join(unrelated,"sentinel"),"keep");
+  const outside=path.join(w.dir,"outside");fs.mkdirSync(outside);fs.writeFileSync(path.join(outside,"sentinel"),"outside");
+  fs.symlinkSync(outside,path.join(w.data,"montclip-asr-LINK01"),process.platform === "win32" ? "junction" : "dir");
+  const nested=path.join(w.data,"montclip-asr-NEST01");fs.mkdirSync(nested);fs.symlinkSync(outside,path.join(nested,"link"),process.platform === "win32" ? "junction" : "dir");
+  fs.writeFileSync(path.join(w.data,"montclip-asr-FILE01"),"file");
+  installAsr({runtime:w.runtime,platform:"linux-x64",data:w.data,files:w.handed,tmpDir:w.data});
+  assert.equal(fs.existsSync(stale),false);
+  assert.equal(fs.readFileSync(path.join(outside,"sentinel"),"utf8"),"outside");
+  assert.equal(fs.readFileSync(path.join(unrelated,"sentinel"),"utf8"),"keep");
+  assert.ok(fs.lstatSync(path.join(w.data,"montclip-asr-LINK01")).isSymbolicLink());
+  assert.ok(fs.existsSync(nested));assert.equal(fs.readFileSync(path.join(w.data,"montclip-asr-FILE01"),"utf8"),"file");
+});
+
+test("a package.json-only manual install is not a complete pinned package", (t) => {
+  const {planAsr}=require("../node/asr-install.cjs"), w=world(t);
+  const item={...w.runtime.items[0],name:"sherpa-onnx-node-2.0.1.tgz"};
+  const dest=path.join(w.data,item.into);fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,"package.json"),JSON.stringify({name:"sherpa-onnx-node",version:"2.0.1"}));
+  assert.equal(planAsr({...w.runtime,items:[item]},"linux-x64",w.data).missing.length,1);
+});
+
+test("missing native payload and same-size changed payload invalidate a package despite its marker", (t) => {
+  const {planAsr,installAsr}=require("../node/asr-install.cjs");
+  for(const mode of ["missing","changed","legacy-marker"]) {
+    const w=world(t);installAsr({runtime:w.runtime,platform:"linux-x64",data:w.data,files:w.handed,tmpDir:w.dir});
+    const dest=path.join(w.data,w.runtime.items[0].into), payload=path.join(dest,"addon.js");
+    assert.equal(planAsr(w.runtime,"linux-x64",w.data).missing.length,0);
+    if(mode === "missing")fs.unlinkSync(payload);
+    if(mode === "changed"){const st=fs.statSync(payload);fs.writeFileSync(payload,"y");fs.utimesSync(payload,st.atime,st.mtime);}
+    if(mode === "legacy-marker")fs.writeFileSync(path.join(dest,".montclip-asr.json"),JSON.stringify({sha256:w.runtime.items[0].sha256}));
+    assert.deepEqual(planAsr(w.runtime,"linux-x64",w.data).missing.map(i=>i.name),["node.tgz"],mode);
+    installAsr({runtime:w.runtime,platform:"linux-x64",data:w.data,files:w.handed,tmpDir:w.dir});
+    assert.equal(planAsr(w.runtime,"linux-x64",w.data).missing.length,0);
+  }
+});
+
+
+test("next install removes an exited process staging directory and preserves a live owner", (t) => {
+  const {installAsr}=require("../node/asr-install.cjs"), w=world(t);
+  const child=require("node:child_process").spawnSync(process.execPath,["-e", 'const fs=require("fs"),path=require("path"); const p=fs.mkdtempSync(path.join(process.argv[1],"montclip-asr-"+process.pid+"-")); fs.writeFileSync(path.join(p,"partial"),Buffer.alloc(4096)); process.stdout.write(p); process.exit(9);', w.data], {encoding:"utf8"});
+  assert.equal(child.status,9);const stale=child.stdout;assert.ok(fs.existsSync(stale));
+  const active=fs.mkdtempSync(path.join(w.data,"montclip-asr-"+process.pid+"-"));fs.writeFileSync(path.join(active,"keep"),"live");
+  installAsr({runtime:w.runtime,platform:"linux-x64",data:w.data,files:w.handed,tmpDir:w.data});
+  assert.equal(fs.existsSync(stale),false);
+  assert.equal(fs.readFileSync(path.join(active,"keep"),"utf8"),"live");
+});

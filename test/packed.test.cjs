@@ -67,6 +67,10 @@ test("built worker starts, serves editor assets and isolates task projects", { t
     pending.set(n, m => { clearTimeout(timer); m.error ? reject(new Error(`Failed: ${method}`)) : resolve(m.result); });
     worker.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: n, method, params }) + "\n");
   });
+  const stale = path.join(data, "montclip-asr-OLD123");
+  fs.mkdirSync(stale); fs.writeFileSync(path.join(stale, "partial"), "leftover");
+  await rpc("montclip/asr-spec");
+  assert.equal(fs.existsSync(stale), false, "preflight cleans stale staging before deciding whether downloads are needed");
   const start = await rpc("montclip/start");
   const headers = { "X-MontClip-Session": new URL(start.url).searchParams.get("token") };
   assert.equal((await fetch(start.origin + "/api/project")).status, 403);
