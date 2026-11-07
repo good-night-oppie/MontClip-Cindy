@@ -28,7 +28,13 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
 for (const f of ["worker.cjs", "lib.cjs"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
-fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ engine: lock }, null, 2) + "\n");
+// The plugin's own commit too, so an installed package says exactly which MontClip-Cindy build it is (Deja, 2026-11-07:
+// Europa's 0.5.1-preview.4 was an uncommitted author copy and its SOURCE.json named only the engine). `dirty` is true when
+// tracked plugin files (outside engine/ and dist/) differ from that commit.
+const pluginCommit = execFileSync("git", ["-C", __dirname, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const pluginDirty = execFileSync("git", ["-C", __dirname, "status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)engine", ":(exclude)dist"], { encoding: "utf8" }).trim() !== "";
+const plugin = { repository: "https://github.com/good-night-oppie/MontClip-Cindy.git", commit: pluginCommit, dirty: pluginDirty };
+fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ plugin, engine: lock }, null, 2) + "\n");
 // the engine and the editor page; dev tooling, tests, docs and the Electron shell stay out
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);
 const FILE_EXT = new Set([".js", ".html", ".css", ".json", ".svg", ".md"]);

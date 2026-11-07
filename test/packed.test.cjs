@@ -13,6 +13,17 @@ test("package contains the pinned engine and plugin, not the source repository",
     assert.equal(fs.existsSync(path.join(DIST, f)), false, f);
 });
 
+test("SOURCE.json names the plugin commit (and whether it was dirty) as well as the pinned engine", () => {
+  const { execFileSync } = require("node:child_process");
+  const src = JSON.parse(fs.readFileSync(path.join(DIST, "SOURCE.json"), "utf8"));
+  assert.deepEqual(src.engine, require(path.join(ROOT, "engine-lock.json")));
+  assert.equal(src.plugin.repository, "https://github.com/good-night-oppie/MontClip-Cindy.git");
+  assert.equal(src.plugin.commit, execFileSync("git", ["-C", ROOT, "rev-parse", "HEAD"], { encoding: "utf8" }).trim());
+  assert.match(src.plugin.commit, /^[0-9a-f]{40}$/);
+  const dirty = execFileSync("git", ["-C", ROOT, "status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)engine", ":(exclude)dist"], { encoding: "utf8" }).trim() !== "";
+  assert.equal(src.plugin.dirty, dirty);
+});
+
 test("packed views preserve hidden status despite the flex layout", () => {
   const css = fs.readFileSync(path.join(DIST, "frame.css"), "utf8");
   // Author display:flex overrides the browser's default [hidden] rule.
