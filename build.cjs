@@ -28,7 +28,13 @@ for (const e of fs.readdirSync(__dirname, { withFileTypes: true })) {
 for (const d of ["assets", "embed"]) fs.cpSync(path.join(__dirname, d), path.join(DIST, d), { recursive: true });
 fs.mkdirSync(path.join(DIST, "node"), { recursive: true });
 for (const f of ["worker.cjs", "lib.cjs", "asr-install.cjs", "asr-runtime.json"]) fs.copyFileSync(path.join(__dirname, "node", f), path.join(DIST, "node", f));
-fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ engine: lock }, null, 2) + "\n");
+// The plugin's own commit too, so an installed package says exactly which MontClip-Cindy build it is (Deja, 2026-11-07:
+// Europa's 0.5.1-preview.4 was an uncommitted author copy and its SOURCE.json named only the engine). `dirty` is true when
+// tracked plugin files (outside engine/ and dist/) differ from that commit.
+const pluginCommit = execFileSync("git", ["-C", __dirname, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const pluginDirty = execFileSync("git", ["-C", __dirname, "status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)engine", ":(exclude)dist"], { encoding: "utf8" }).trim() !== "";
+const plugin = { repository: "https://github.com/good-night-oppie/MontClip-Cindy.git", commit: pluginCommit, dirty: pluginDirty };
+fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ plugin, engine: lock }, null, 2) + "\n");
 // the engine and the editor page; dev tooling, tests, docs and the Electron shell stay out
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);
 const FILE_EXT = new Set([".js", ".html", ".css", ".json", ".svg", ".md"]);
@@ -65,5 +71,13 @@ for (const f of ["asr-manifest.json", "asr-text.js"]) copy(path.join(ROOT, "desk
 // the pages the plugin's own views frame (served by the engine's static route, same origin as the editor)
 const EMBED = path.join(__dirname, "embed");
 if (fs.existsSync(EMBED)) for (const f of fs.readdirSync(EMBED)) copy(path.join(EMBED, f), path.join(OUT, "cindy", f));
+// the notices for the bundled assistant pane (cindy-official.js carries React, Radix and Cindy's Apache-2.0 parts);
+// LICENSES.md links these files, so they ship with it. Its sources and build tools stay out.
+for (const f of ["upstream/LICENSE", "upstream/NOTICE", "cindy-43001ea/LICENSE", "cindy-43001ea/NOTICE", "THIRD-PARTY-NOTICES.txt", "BUNDLED-LICENSES.json", "BUNDLED-PACKAGES.json", "SOURCES.json"]) {
+  const rel = "agent-ui/" + f;
+  if (!tracked.has(rel)) throw new Error("the engine does not track " + rel);
+  copy(path.join(ROOT, rel), path.join(OUT, rel));
+}
+walk("agent-ui/licenses");
 for (const d of ["media", "exports"]) fs.mkdirSync(path.join(OUT, d), { recursive: true });
 console.log(`dist/montclip/node/app: ${files} files, ${(bytes / 1e6).toFixed(1)} MB from ${ROOT}`);
