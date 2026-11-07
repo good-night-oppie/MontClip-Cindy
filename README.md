@@ -37,6 +37,6 @@ DD 负责 Europa 安装与更新，demo 任务边使用边反馈；JJ 复核产�
 
 MIT，保留 [LICENSE](LICENSE) 中原有版权声明。MontClip 源自 [FableCut](https://github.com/ronak-create/FableCut)；引擎第三方声明保留在子模块中并随所需运行资源构建。
 
-## PR 送审提示检查
+## PR 送审检查
 
-两仓共享 Node 标准库规则、伙伴名单和文件分类。送审正文前两行为「QQ 请审」「负责人：<实际伙伴名>」；具体字段、例外和复现命令见 [送审规则](scripts/pr-sop/README.md)。当前只提示，不设必过检查；例外仍由 QQ 核验，不执行 PR 源码。
+固定检查名 sop-pr-lint，缺负责人或SOP证据返回失败，例外须核验GoodNightOppie标签来源。[规则与模板](scripts/pr-sop/README.md)。生效时间由Deja确定，必过设置由QQ完成并读回；本PR不改规则集。
