@@ -36,6 +36,51 @@ test("a settings folder inside the data folder turns the feature off instead of 
   assert.ok(externalFfmpegSettings(data, { platform: "linux", env: { MONTCLIP_CINDY_CONFIG: data + "-config" } }));
 });
 
+test("relative or empty APPDATA / XDG_CONFIG_HOME count as unset, so the folder is always absolute (Rea on #35)", () => {
+  const home = path.resolve("/home/u");
+  assert.equal(configDir({ platform: "linux", env: { XDG_CONFIG_HOME: "cfg" }, home }), path.join(home, ".config", "montclip-cindy"));
+  assert.equal(configDir({ platform: "win32", env: { APPDATA: "Roaming" }, home }), path.join(home, "AppData", "Roaming", "MontClip-Cindy"));
+  assert.equal(configDir({ platform: "win32", env: { APPDATA: "" }, home }), path.join(home, "AppData", "Roaming", "MontClip-Cindy"));
+  assert.equal(configDir({ platform: "linux", env: { MONTCLIP_CINDY_CONFIG: "cfg" }, home }), path.join(home, ".config", "montclip-cindy"));
+  for (const platform of ["linux", "darwin", "win32"])
+    for (const env of [{ XDG_CONFIG_HOME: "cfg" }, { APPDATA: "Roaming" }])
+      assert.ok(path.isAbsolute(externalFfmpegSettings(path.join(home, "MontClip-Cindy"), { platform, env, home })), `${platform} ${JSON.stringify(env)}`);
+});
+
+// Real links on disk. "junction" is the Windows directory link that needs no admin rights; elsewhere the type is
+// ignored and this is an ordinary symlink.
+function linkDir(target, link) { fs.mkdirSync(path.dirname(link), { recursive: true }); fs.symlinkSync(target, link, "junction"); }
+test("links cannot smuggle the settings into the data folder (Rea on #35)", (t) => {
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "mc-extlink-")));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const data = path.join(tmp, "data"); fs.mkdirSync(path.join(data, "planted"), { recursive: true });
+  const off = (cfg, d = data) => externalFfmpegSettings(d, { env: { MONTCLIP_CINDY_CONFIG: cfg } });
+  // 1. the settings folder is a link into DATA
+  linkDir(path.join(data, "planted"), path.join(tmp, "cfg-link"));
+  assert.equal(off(path.join(tmp, "cfg-link")), null);
+  // …also when the settings folder itself does not exist yet but a parent is the link
+  assert.equal(off(path.join(tmp, "cfg-link", "not-yet", "deeper")), null);
+  // 2. DATA is reached through a link, the settings folder sits in DATA's real path
+  linkDir(data, path.join(tmp, "data-link"));
+  assert.equal(off(path.join(data, "cfg"), path.join(tmp, "data-link")), null);
+  // 3. the settings file itself is a link into DATA (POSIX file symlinks; Windows needs admin rights for those)
+  if (process.platform !== "win32") {
+    const cfg = path.join(tmp, "cfg-filelink"); fs.mkdirSync(cfg);
+    fs.writeFileSync(path.join(data, "planted", "x.json"), "{}");
+    fs.symlinkSync(path.join(data, "planted", "x.json"), path.join(cfg, "external-ffmpeg.json"));
+    assert.equal(off(cfg), null);
+    // 4. a dangling link (its target could appear later) is off too
+    const cfg2 = path.join(tmp, "cfg-dangling"); fs.mkdirSync(cfg2);
+    fs.symlinkSync(path.join(tmp, "nowhere", "x.json"), path.join(cfg2, "external-ffmpeg.json"));
+    assert.equal(off(cfg2), null);
+  }
+  // a real folder outside DATA, and a link that points outside DATA, still work
+  const real = path.join(tmp, "cfg-real"); fs.mkdirSync(real);
+  assert.equal(off(real), path.join(real, "external-ffmpeg.json"));
+  linkDir(real, path.join(tmp, "cfg-out-link"));
+  assert.equal(off(path.join(tmp, "cfg-out-link")), path.join(tmp, "cfg-out-link", "external-ffmpeg.json"));
+});
+
 test("the worker takes the setting from the settings folder, never from DATA", () => {
   const w = fs.readFileSync(path.join(ROOT, "node", "worker.cjs"), "utf8");
   assert.match(w, /const extSettings = externalFfmpegSettings\(DATA\);/);

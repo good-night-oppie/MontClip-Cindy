@@ -312,19 +312,40 @@ function asrModelMb(manifest, aboutMb) {
    a path bug in the engine must never be able to plant the settings that name a program to run), and outside the
    plugin folder, which an update replaces. Like the desktop app's userData. MONTCLIP_CINDY_CONFIG overrides it (tests). */
 function configDir({ platform = process.platform, env = process.env, home = require("node:os").homedir() } = {}) {
-  if (env.MONTCLIP_CINDY_CONFIG) return path.resolve(env.MONTCLIP_CINDY_CONFIG);
-  if (platform === "win32") return path.join(env.APPDATA || path.join(home, "AppData", "Roaming"), "MontClip-Cindy");
+  // Only absolute values count; a relative one would resolve against wherever the process started (Rea on #35;
+  // the XDG spec says to ignore a relative XDG_CONFIG_HOME). Empty counts as unset.
+  const abs = (v) => (v && path.isAbsolute(v) ? v : "");
+  if (abs(env.MONTCLIP_CINDY_CONFIG)) return path.resolve(env.MONTCLIP_CINDY_CONFIG);
+  if (platform === "win32") return path.join(abs(env.APPDATA) || path.join(home, "AppData", "Roaming"), "MontClip-Cindy");
   if (platform === "darwin") return path.join(home, "Library", "Application Support", "MontClip-Cindy");
-  return path.join(env.XDG_CONFIG_HOME || path.join(home, ".config"), "montclip-cindy");
+  return path.join(abs(env.XDG_CONFIG_HOME) || path.join(home, ".config"), "montclip-cindy");
+}
+/* The real location of p, even when p or some of its parents do not exist yet: the nearest part that exists goes
+   through realpath (so a symlink or Windows junction anywhere on the way is followed), the rest is appended.
+   null when a part exists but cannot be resolved (a dangling link: its target could be created later). */
+function realLocation(p, fsx = fs) {
+  let cur = path.resolve(p); const rest = [];
+  for (;;) {
+    let exists = true;
+    try { fsx.lstatSync(cur); } catch { exists = false; }
+    if (exists) { try { return path.join(fsx.realpathSync.native(cur), ...rest); } catch { return null; } }
+    const up = path.dirname(cur);
+    if (up === cur) return path.join(cur, ...rest);
+    rest.unshift(path.basename(cur)); cur = up;
+  }
 }
 /* Where the engine reads the user's own FFmpeg (engine external-ffmpeg.js: {version:1, path}, H.264 export only).
-   null — the feature stays off — when that file would sit inside the data folder. */
+   null — the feature stays off — when that file would really sit inside the data folder, compared after following
+   links on both sides (Rea on #35: a junction or symlink must not smuggle it in), or when either side cannot be
+   resolved. */
 function externalFfmpegSettings(data, opts = {}) {
   const platform = opts.platform || process.platform;
   const file = path.join(configDir(opts), "external-ffmpeg.json");
-  const norm = (p) => (platform === "win32" ? path.resolve(p).toLowerCase() : path.resolve(p));
-  const rel = path.relative(norm(data), norm(file));
+  const realFile = realLocation(file, opts.fs), realData = realLocation(data, opts.fs);
+  if (!realFile || !realData) return null;
+  const norm = (p) => (platform === "win32" ? p.toLowerCase() : p);
+  const rel = path.relative(norm(realData), norm(realFile));
   return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? null : file;
 }
-module.exports = { configDir, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+module.exports = { configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };
