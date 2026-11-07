@@ -308,5 +308,23 @@ function asrModelMb(manifest, aboutMb) {
   const files = manifest && manifest.models && manifest.models.asr && manifest.models.asr.files;
   return files ? aboutMb(Object.values(files).reduce((n, f) => n + f.size, 0)) : null;
 }
-module.exports = { aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+/* The plugin's own settings folder: outside the data folder, where the engine writes (Deja, 2026-11-07 on #35 —
+   a path bug in the engine must never be able to plant the settings that name a program to run), and outside the
+   plugin folder, which an update replaces. Like the desktop app's userData. MONTCLIP_CINDY_CONFIG overrides it (tests). */
+function configDir({ platform = process.platform, env = process.env, home = require("node:os").homedir() } = {}) {
+  if (env.MONTCLIP_CINDY_CONFIG) return path.resolve(env.MONTCLIP_CINDY_CONFIG);
+  if (platform === "win32") return path.join(env.APPDATA || path.join(home, "AppData", "Roaming"), "MontClip-Cindy");
+  if (platform === "darwin") return path.join(home, "Library", "Application Support", "MontClip-Cindy");
+  return path.join(env.XDG_CONFIG_HOME || path.join(home, ".config"), "montclip-cindy");
+}
+/* Where the engine reads the user's own FFmpeg (engine external-ffmpeg.js: {version:1, path}, H.264 export only).
+   null — the feature stays off — when that file would sit inside the data folder. */
+function externalFfmpegSettings(data, opts = {}) {
+  const platform = opts.platform || process.platform;
+  const file = path.join(configDir(opts), "external-ffmpeg.json");
+  const norm = (p) => (platform === "win32" ? path.resolve(p).toLowerCase() : path.resolve(p));
+  const rel = path.relative(norm(data), norm(file));
+  return rel && !rel.startsWith("..") && !path.isAbsolute(rel) ? null : file;
+}
+module.exports = { configDir, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };
