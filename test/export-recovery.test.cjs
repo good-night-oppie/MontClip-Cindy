@@ -26,7 +26,7 @@ test('completed export can be delivered after engine expiry and worker restart',
 // JJ's final NO_JOB wording (MontClip-Cindy#24, comment 6699941339), locked word for word, Chinese and English; the
 // button stays 〔打开导出文件夹〕 → open-folder:exports.
 const NO_JOB_ZH='这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。';
-const NO_JOB_EN="This export's record is no longer available. Open the exports folder to see if the finished file is there; if it isn't, export again. Your edits are all still there.";
+const NO_JOB_EN="This export's record is no longer available. Open the export folder to see if the finished file is there; if it isn't, export again. Your edits are all still there.";
 function loadMain(request){
  const sent=[],box={cindy:{onHostMessage:f=>box.listener=f,send:async m=>{sent.push(m);return {ok:true};},node:{request}},BroadcastChannel:class{postMessage(){}},console:{warn(){}},setTimeout,clearTimeout,setInterval,clearInterval,URL};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../main.js'),'utf8')+"\nthis.plainFailure=plainFailure;this.exportCard=exportCard;this.sendCard=sendCard;",box);
