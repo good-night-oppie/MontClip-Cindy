@@ -36,7 +36,3 @@ DD 负责 Europa 安装与更新，demo 任务边使用边反馈；JJ 复核产�
 ## License
 
 MIT，保留 [LICENSE](LICENSE) 中原有版权声明。MontClip 源自 [FableCut](https://github.com/ronak-create/FableCut)；引擎第三方声明保留在子模块中并随所需运行资源构建。
-
-## PR 送审检查
-
-固定检查名 sop-pr-lint，缺负责人或SOP证据返回失败，例外须核验GoodNightOppie标签来源。[规则与模板](scripts/pr-sop/README.md)。生效时间由Deja确定，必过设置由QQ完成并读回；本PR不改规则集。
