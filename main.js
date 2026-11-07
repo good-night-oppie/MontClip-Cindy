@@ -621,7 +621,11 @@ channel.onmessage = async (e) => {
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)
-    else if (m.type === 'open-task') a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: String(m.session || ''), focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
+    else if (m.type === 'open-task') {
+      // An invalid explicit project task must never fall back to the foreground task.
+      if (typeof m.session !== 'string' || !m.session.trim() || m.session !== m.session.trim()) a = { ok: false, errorCode: 'INVALID_REQUEST' };
+      else a = typeof cindy.taskView === 'function' ? await cindy.taskView({ sessionId: m.session, focus: true }) : { ok: false, errorCode: 'HOST_TOO_OLD' };
+    }
     else if (m.type === 'ffmpeg-install') a = await installFfmpeg();   // the banner's button: the user's own click
     // the main view's 打开文件夹: always MontClip's exports folder — a page never names a path
     else if (m.type === 'open-folder') a = await node('montclip/open-folder', { folder: 'exports' });
