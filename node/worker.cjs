@@ -83,6 +83,9 @@ async function boot() {
     // only the pinned LGPL build fetched into the data folder (montclip_install_ffmpeg); never one from PATH
     MONTCLIP_FFMPEG_PACKAGED: "1", MONTCLIP_FFMPEG_DIR: FFMPEG_DIR,
     MONTCLIP_FFMPEG_REMEDY: "In Cindy, install it from the MontClip editor tab's banner, or ask the chat to run montclip_install_ffmpeg.",
+    // The user's own FFmpeg with libx264, for H.264 export only (engine external-ffmpeg.js, ADR
+    // engine/docs/decisions/2026-11-02-h264-encoder.md): {version:1, path} in the data folder. No file → none, as before.
+    MONTCLIP_EXTERNAL_FFMPEG_SETTINGS: path.join(DATA, "external-ffmpeg.json"),
     MONTCLIP_ASR_DIR: ASR_DIR, MONTCLIP_ASR_MODELS_DIR: ASR_MODELS_DIR,
   });
   require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
