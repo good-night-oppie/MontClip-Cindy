@@ -1,5 +1,6 @@
 name: Plugin build and smoke tests
-on: [push, pull_request]
+# merge_group: GitHub merge queue (QQ, 2026-11-07; owner approved) runs the same checks on the PR stacked on the latest main.
+on: [push, pull_request, merge_group]
 permissions:
   contents: read
 jobs:
@@ -10,10 +11,10 @@ jobs:
         node: [18, 22]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
