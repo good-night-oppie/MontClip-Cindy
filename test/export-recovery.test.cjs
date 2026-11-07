@@ -49,19 +49,21 @@ test('NO_JOB 〔打开导出文件夹〕 asks for the exports folder only, by na
  await m.listener({type:'event',name:'card-action',actionId:'open-folder:exports',callId:'gone'});
  assert.deepEqual(asks.map(r=>[r.method,JSON.stringify(r.params)]),[['montclip/open-folder','{"folder":"exports"}']]);
 });
-test('worker: with no folder ever picked, the exports folder is <data folder>/exports, made if it is missing',{skip:process.platform==='darwin'&&'opens Finder on macOS',timeout:15000},async t=>{
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mc-open-')),app=path.join(dir,'app'),data=path.join(dir,'data'),fake=path.join(dir,'no-opener');
+test('worker: with no folder ever picked, the exports folder is <data folder>/exports, made if it is missing',{timeout:20000},async t=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'mc-open-')),app=path.join(dir,'app'),data=path.join(dir,'data'),seen=path.join(dir,'opened.json'),pre=path.join(dir,'no-opener.cjs');
  t.after(()=>{assert.equal(path.dirname(dir),os.tmpdir());fs.rmSync(dir,{recursive:true,force:true});});
- for(const d of [app,data,fake])fs.mkdirSync(d,{recursive:true});
+ for(const d of [app,data])fs.mkdirSync(d,{recursive:true});
  fs.writeFileSync(path.join(app,'server.js'),'');fs.writeFileSync(path.join(app,'mcp-server.js'),'module.exports={TOOLS:[],callTool:async()=>({})}');fs.writeFileSync(path.join(app,'export-jobs.js'),'module.exports={findBrowser:()=>null}');
- // no file manager is started: explorer.exe / xdg-open are looked for where there is none (the spawn error is ignored)
- const env={...process.env,MONTCLIP_CINDY_APP:app,MONTCLIP_CINDY_DATA:data,SystemRoot:fake,windir:fake};if(process.platform!=='win32')env.PATH=fake;
- const p=spawn(process.execPath,[path.join(__dirname,'../node/worker.cjs')],{env,stdio:['pipe','pipe','pipe'],windowsHide:true});p.stderr.resume();
+ // no file manager is started: a preload writes down what explorer.exe / open / xdg-open would have been given instead
+ fs.writeFileSync(pre,`const cp=require('child_process'),fs=require('fs'),path=require('path'),real=cp.spawn;cp.spawn=function(cmd,args,o){if(/^(explorer\.exe|open|xdg-open)$/i.test(path.basename(String(cmd)))){fs.writeFileSync(${JSON.stringify(seen)},JSON.stringify({cmd:path.basename(String(cmd)),args}));return {on(){},unref(){}};}return real.apply(this,arguments);};`);
+ const p=spawn(process.execPath,['-r',pre,path.join(__dirname,'../node/worker.cjs')],{env:{...process.env,MONTCLIP_CINDY_APP:app,MONTCLIP_CINDY_DATA:data},stdio:['pipe','pipe','pipe'],windowsHide:true});
+ let err='';p.stderr.on('data',c=>{err+=c;});
  t.after(()=>new Promise(r=>{if(p.exitCode!==null||p.signalCode!==null)return r();p.once('exit',r);p.stdin.end();}));
- const reply=new Promise((resolve,reject)=>{let buf='';const timer=setTimeout(()=>reject(Error('RPC timeout')),5000);p.stdout.on('data',c=>{buf+=c;const end=buf.indexOf('\n');if(end<0)return;clearTimeout(timer);const m=JSON.parse(buf.slice(0,end));m.error?reject(Object.assign(Error(m.error.message),{code:m.error.data?.code})):resolve(m.result);});});
+ const reply=new Promise((resolve,reject)=>{let buf='';const timer=setTimeout(()=>reject(Error('RPC timeout; worker stderr: '+err.slice(-2000))),15000);p.stdout.on('data',c=>{buf+=c;const end=buf.indexOf('\n');if(end<0)return;clearTimeout(timer);const m=JSON.parse(buf.slice(0,end));m.error?reject(Object.assign(Error(m.error.message),{code:m.error.data?.code})):resolve(m.result);});});
  assert.equal(fs.existsSync(path.join(data,'exports')),false,'nothing made the folder before the click');
  p.stdin.write(JSON.stringify({jsonrpc:'2.0',id:1,method:'montclip/open-folder',params:{folder:'exports'}})+'\n');
- const r=await reply;
- assert.equal(r.opened,fs.realpathSync.native(path.join(data,'exports')));
- assert.ok(fs.statSync(path.join(data,'exports')).isDirectory());
+ const r=await reply,exportsDir=fs.realpathSync.native(path.join(data,'exports'));
+ assert.equal(r.opened,exportsDir);
+ assert.ok(fs.statSync(exportsDir).isDirectory());
+ assert.deepEqual(JSON.parse(fs.readFileSync(seen,'utf8')).args,[exportsDir],'the file manager is given that folder and nothing else');
 });
