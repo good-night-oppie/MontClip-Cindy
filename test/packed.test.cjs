@@ -7,10 +7,21 @@ const ROOT = path.resolve(__dirname, ".."), DIST = path.join(ROOT, "dist", "mont
 test("package contains the pinned engine and plugin, not the source repository", () => {
   for (const f of ["app.js", "server.js", "host-embed.js", "index.html", "style.css", "LICENSE", "LICENSES.md"])
     assert.ok(fs.readFileSync(path.join(ROOT, "engine", f)).equals(fs.readFileSync(path.join(DIST, "node", "app", f))), f);
-  for (const f of ["main.js", "ghost.json", "node/worker.cjs", "node/lib.cjs"])
+  for (const f of ["main.js", "ghost.json", "frame.css", "frame.js", "task-view.html", "panel.html", "node/worker.cjs", "node/lib.cjs"])
     assert.ok(fs.readFileSync(path.join(ROOT, f)).equals(fs.readFileSync(path.join(DIST, f))), f);
   for (const f of ["engine", ".git", "test", "test-tools", "build.cjs", "package.json"])
     assert.equal(fs.existsSync(path.join(DIST, f)), false, f);
+});
+
+test("packed views preserve hidden status despite the flex layout", () => {
+  const css = fs.readFileSync(path.join(DIST, "frame.css"), "utf8");
+  // Author display:flex overrides the browser's default [hidden] rule.
+  assert.match(css, /\[hidden\]\s*\{\s*display:\s*none\s*!important\s*;?\s*\}/);
+  for (const page of ["task-view.html", "panel.html"]) {
+    const html = fs.readFileSync(path.join(DIST, page), "utf8");
+    assert.match(html, /href="frame\.css"/);
+    assert.match(html, /id="status"/);
+  }
 });
 
 test("built worker starts, serves editor assets and isolates task projects", { timeout: 30000 }, async (t) => {
