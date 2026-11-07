@@ -7,6 +7,6 @@
   "engines": { "node": ">=18" },
   "scripts": {
     "build": "node build.cjs",
-    "test": "node build.cjs && node --test test/packed.test.cjs test/install-ffmpeg.test.cjs test/ffmpeg-retry.test.cjs test/asr-card.test.cjs test/export-job.test.cjs test/worker-exit.test.cjs test/export-delivery.test.cjs test/stopped-copy.test.cjs test/external-ffmpeg.test.cjs"
+    "test": "node build.cjs && node tools/run-tests.cjs"
   }
 }
