@@ -56,19 +56,19 @@
     },
     openFolder: (e, code) => failure("没能打开导出文件夹。", "再点一次试试", e, code),   // waiting for JJ
   };
-  // Draft keys for JJ. A host acknowledgement is not proof of a visible editor.
+  // JJ final (Deja, 2026-11-06), bound to e77c9706. A receipt is not proof of a visible editor.
   const OPEN_TASK_COPY = {
     "overview.focus-requested": {
-      zh: "已请求切换到这个任务。请查看右侧的 MontClip 剪辑器，时间线出现后再继续。",
-      en: "A switch to this task was requested. Check the MontClip editor on the right and wait for the timeline before continuing."
+      "zh": "已请求切换到这个任务。请在 Cindy 里查看 MontClip 剪辑器，等时间线出现后再继续。",
+      "en": "A switch to this task was requested. Check the MontClip editor in Cindy and wait for the timeline before continuing."
     },
     "overview.focus-unconfirmed": {
-      zh: "Cindy 没有确认切换到这个任务。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器；也可以检查 Cindy 是否有更新。",
-      en: "Cindy did not confirm a switch to this task. Open the matching task from the task list, then ask the AI to open the MontClip editor. You can also check for Cindy updates."
+      "zh": "Cindy 没有确认切换到这个任务，可能已经切换，也可能没有。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器；也可以检查 Cindy 是否有更新。",
+      "en": "Cindy did not confirm a switch to this task. It may or may not have switched. Open the matching task from the task list, then ask the AI to open the MontClip editor. You can also check for Cindy updates."
     },
     "overview.open-failed": {
-      zh: "这次没能打开任务剪辑器。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器。",
-      en: "The task editor could not be opened this time. Open the matching task from the task list, then ask the AI to open the MontClip editor."
+      "zh": "这次打开任务剪辑器的请求没有成功，页面可能没有切换。请从任务列表进入对应任务，再让 AI 打开 MontClip 剪辑器。",
+      "en": "The request to open the task editor did not succeed, so the page may not have switched. Open the matching task from the task list, then ask the AI to open the MontClip editor."
     }
   };
   function taskOpenResult(reply, session, language = "zh") {
