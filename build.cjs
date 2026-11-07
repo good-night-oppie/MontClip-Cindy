@@ -65,5 +65,13 @@ for (const f of ["asr-manifest.json", "asr-text.js"]) copy(path.join(ROOT, "desk
 // the pages the plugin's own views frame (served by the engine's static route, same origin as the editor)
 const EMBED = path.join(__dirname, "embed");
 if (fs.existsSync(EMBED)) for (const f of fs.readdirSync(EMBED)) copy(path.join(EMBED, f), path.join(OUT, "cindy", f));
+// the notices for the bundled assistant pane (cindy-official.js carries React, Radix and Cindy's Apache-2.0 parts);
+// LICENSES.md links these files, so they ship with it. Its sources and build tools stay out.
+for (const f of ["upstream/LICENSE", "upstream/NOTICE", "cindy-43001ea/LICENSE", "cindy-43001ea/NOTICE", "THIRD-PARTY-NOTICES.txt", "BUNDLED-LICENSES.json", "BUNDLED-PACKAGES.json", "SOURCES.json"]) {
+  const rel = "agent-ui/" + f;
+  if (!tracked.has(rel)) throw new Error("the engine does not track " + rel);
+  copy(path.join(ROOT, rel), path.join(OUT, rel));
+}
+walk("agent-ui/licenses");
 for (const d of ["media", "exports"]) fs.mkdirSync(path.join(OUT, d), { recursive: true });
 console.log(`dist/montclip/node/app: ${files} files, ${(bytes / 1e6).toFixed(1)} MB from ${ROOT}`);
