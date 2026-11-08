@@ -600,7 +600,7 @@ const HANDLERS = {
     return { category: args.category, rules: RULES[args.category] || '', tools: list };
   },
   async call_tool(args, msg) {
-    await forTask(msg);
+    // The worker binds and submits atomically; a separate bind would wait behind unrelated work.
     const tools = await engineTools();
     const name = String(args.name || '');
     const tool = tools.find((t) => t.name === name);
