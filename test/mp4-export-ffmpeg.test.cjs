@@ -82,7 +82,9 @@ test("an agent reads the same in montclip_status and when montclip_export starts
   const own = mp4Note({ encoder: "libx264", from: "path" });
   assert.match(own, /not the FFmpeg MontClip downloaded/);
   assert.match(own, /libx264/);
-  assert.match(mp4Note({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }), /\/usr\/bin\/ffmpeg 5\.1\.9-0\+deb12u1/);
+  // only the program's file name: the folders it is in stay on this computer (QQ on #46)
+  assert.match(mp4Note({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }), /by ffmpeg 5\.1\.9-0\+deb12u1, named/);
+  assert.doesNotMatch(mp4Note({ encoder: "libx264", from: "settings", program: "~\\tools\\ffmpeg.exe" }), /[\\/]/);
   assert.match(mp4Note({ encoder: "h264_nvenc", from: "bundled" }), /the FFmpeg MontClip downloaded/);
   assert.doesNotMatch(mp4Note({ encoder: "h264_nvenc", from: "bundled" }), /not the FFmpeg/);
   assert.match(mp4Note({ encoder: null, from: "none" }), /no H\.264 encoder/);
@@ -93,4 +95,56 @@ test("an agent reads the same in montclip_status and when montclip_export starts
   // the worker asks the engine, through the same route the export dialog uses
   assert.match(WORKER, /"montclip\/h264"/);
   assert.match(WORKER, /\/api\/export\/h264/);
+});
+
+test("maskHome: a Windows path matches the home folder in any case and with either slash; POSIX as it is", () => {
+  // synthetic home folders only (QQ on #46: c:\users\<name>\… or C:/Users/<name>/… left the name on the card)
+  const win = "C:\\Users\\someone";
+  for (const p of ["C:\\Users\\someone\\tools\\ffmpeg.exe", "c:\\users\\someone\\tools\\ffmpeg.exe", "C:/Users/someone/tools/ffmpeg.exe",
+    "c:/USERS/SomeOne/tools/ffmpeg.exe", "C:\\Users/someone\\tools/ffmpeg.exe"])
+    assert.equal(maskHome(p, win, "win32"), "~\\tools\\ffmpeg.exe", p);
+  assert.equal(maskHome("c:/users/someone", win, "win32"), "~");
+  assert.equal(maskHome("C:\\Users\\someone\\tools\\ffmpeg.exe", "c:/users/someone/", "win32"), "~\\tools\\ffmpeg.exe", "a home folder written with / and a trailing slash");
+  assert.equal(maskHome("C:\\Users\\someone2\\ffmpeg.exe", win, "win32"), "C:\\Users\\someone2\\ffmpeg.exe", "a sibling that only starts the same is not home");
+  assert.equal(maskHome("D:\\tools\\ffmpeg.exe", win, "win32"), "D:\\tools\\ffmpeg.exe");
+  // POSIX: /home/<name> and /Users/<name>
+  assert.equal(maskHome("/home/someone/bin/ffmpeg", "/home/someone", "linux"), "~/bin/ffmpeg");
+  assert.equal(maskHome("/Users/someone/bin/ffmpeg", "/Users/someone", "darwin"), "~/bin/ffmpeg");
+  assert.equal(maskHome("/home/someone", "/home/someone", "linux"), "~");
+  assert.equal(maskHome("/home/someone2/bin/ffmpeg", "/home/someone", "linux"), "/home/someone2/bin/ffmpeg");
+  assert.equal(maskHome("/usr/bin/ffmpeg", "/home/someone", "linux"), "/usr/bin/ffmpeg");
+});
+
+/* Runs a tool call through main.js the way Cindy does: what the agent gets back (tool-result) and the cards. */
+async function call(tool, args, h264) {
+  const sent = [];
+  let onMsg = null;
+  const answers = {
+    "montclip/start": { origin: "http://127.0.0.1:1", ffmpeg: "downloaded", dataDir: "~/.montclip" },
+    "montclip/asr-status": { engine: true, model: true, punct: true },
+    "montclip/h264": h264, "montclip/export-start": { id: "j1", status: "cancelled", progress: 0 },
+  };
+  const cindy = { onHostMessage: (f) => { onMsg = f; }, send: async (m) => { sent.push(m); return { ok: true }; },
+    node: { request: async ({ method }) => method in answers ? { ok: true, result: answers[method] } : { ok: false, error: "no" } } };
+  class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
+  vm.runInNewContext(MAIN, { cindy, BroadcastChannel, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL });
+  await onMsg({ type: "tool-call", callId: "c1", tool, args });
+  return { result: sent.find((m) => m.type === "tool-result").result, cards: sent.filter((m) => m.type === "card-update").map((m) => m.html || "") };
+}
+
+test("the agent gets only the program's file name; the full path (home folder as ~) stays on the status card", async () => {
+  const settings = (program) => ({ encoder: "libx264", from: "settings", program, version: "5.1.9" });
+  for (const [program, name] of [["~\\tools\\ffmpeg\\bin\\ffmpeg.exe", "ffmpeg.exe"], ["~/bin/ffmpeg", "ffmpeg"],
+    // even a path the worker did not mask: the name in it does not reach the agent
+    ["C:\\Users\\someone\\tools\\ffmpeg.exe", "ffmpeg.exe"], ["/home/someone/bin/ffmpeg", "ffmpeg"]]) {
+    for (const [tool, args] of [["montclip_status", {}], ["montclip_export", { folder: "default" }]]) {
+      const { result, cards } = await call(tool, args, settings(program));
+      assert.equal(result.mp4Export.program, name, tool + " " + program);
+      assert.equal(result.mp4Export.from, "settings");
+      assert.equal(result.mp4Export.version, "5.1.9");
+      for (const [k, v] of Object.entries(result.mp4Export)) assert.doesNotMatch(String(v), /[\\/]/, tool + ": no folder in " + k + ": " + v);
+      assert.doesNotMatch(JSON.stringify(result), /someone/, tool + ": no user name");
+      if (tool === "montclip_status") assert.ok(cards.some((c) => c.includes("用这台电脑上的 " + program + "（5.1.9）")), "the card keeps " + program);
+    }
+  }
 });
