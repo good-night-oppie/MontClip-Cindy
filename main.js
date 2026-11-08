@@ -511,16 +511,65 @@ function asrLine(a, lang) {
 }
 /** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
+/* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no software H.264 encoder
+   (libx264), only graphics-card ones (DD on #46), so without a usable one the user's own FFmpeg encodes every MP4 —
+   the 导出工具 line alone hid that (europa, 2026-11-08). JJ's words (#46): only what is known — from PATH the engine
+   does not say which program, and none is guessed; the settings file named it, which is not the same as the user
+   choosing it. */
+function mp4Line(h) {
+  if (!h) return '现在查不到是哪个 ffmpeg';
+  if (h.from === 'none') return '现在导不了 MP4（没有找到能用的编码工具）';
+  if (h.from === 'bundled') return '用 MontClip 下载的 ffmpeg';
+  const which = h.from === 'settings' ? (h.program ? '设置文件里指定的 ' + h.program + (h.version ? '（版本 ' + h.version + '）' : '') : '设置文件里指定的 ffmpeg')
+    : h.from === 'path' ? '系统里找到的 ffmpeg（具体是哪一个，这里看不出来）' : h.from === 'env' ? '启动时指定的 ffmpeg'
+    : '这台电脑自己的 ffmpeg（具体是哪一个，这里看不出来）';
+  return '用' + which + '，不是 MontClip 下载的那份';
+}
+/** The program's file name only, for an agent: the folders it is in (the full path is on the card) stay here (QQ on #46). */
+const programName = (p) => String(p).split(/[\\/]/).pop();
+/** What an agent reads in montclip_status and when montclip_export starts: the card's facts with the program's name only,
+ *  and a program and version only for the one the settings file names (none is guessed for another source). */
+function mp4Export(h) {
+  const o = Object.assign({}, h, h && h.program ? { program: programName(h.program) } : {}, { note: mp4Note(h) });
+  if (!h || h.from !== 'settings') { delete o.program; delete o.version; }
+  return o;
+}
+/* JJ (#46): so an agent tells the streamer in plain words, not the version strings, variable names or folders below.
+   It names no source itself, so it can't contradict the fact before it (the old example did, for a bundled FFmpeg). */
+const MP4_PLAIN = 'When you tell the streamer, say it in plain words and only as far as the fact above goes; don\'t name any other source for the FFmpeg, and don\'t read out version strings, environment variable names or folder names.';
+/** The same in words for an agent. */
+function mp4Note(h) { return mp4Fact(h) + ' ' + MP4_PLAIN; }
+function mp4Fact(h) {
+  if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
+  if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has no software H.264 encoder, and no graphics-card encoder or own FFmpeg with libx264 was found).';
+  if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
+  const which = h.from === 'settings' ? (h.program ? programName(h.program) + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
+    : h.from === 'path' ? 'the first FFmpeg with libx264 on PATH' : h.from === 'env' ? 'the FFmpeg named in MONTCLIP_EXTERNAL_FFMPEG' : "this computer's own FFmpeg";
+  return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no software H.264 encoder (libx264) and no usable graphics-card encoder here. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
+}
 /** The status card's values, in order (the card and its height estimate read the same list). */
 function statusRows(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
-  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
+  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, mp4Line(s.mp4), asrLine(s.asr)];
 }
 const NOTE_STYLE = 'font-size:12px;line-height:1.45;color:var(--text-secondary,#6b6b66);margin-top:2px';
 /** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
  *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
 function statusCardHeight(s, editorOpen) {
-  const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
+  // laid out the way the browser wraps it, 9 Chinese characters a line. A line may break before each Chinese character
+  // or space, but a run of Latin letters, digits and signs (a path, a version) moves as a whole, an opening bracket
+  // stays with what follows it and a closing one or a comma with what comes before — on the MP4 line (europa,
+  // 2026-11-08) /usr/bin/ffmpeg（ and 5.1.9-0+deb12u1），took a line each where an even spread counted fewer.
+  const W = (t) => [...t].reduce((m, c) => m + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0);
+  const lines = (v) => {
+    let n = 1, cur = 0;
+    for (const unit of String(v).match(/[（《“]*(?:[^\u2e80-\uffef\s]+|[\u2e80-\uffef]|\s)[）》”，。、：；！？]*/g) || []) {
+      const w = W(unit);
+      if (cur > 0 && cur + w > 9) { n++; cur = 0; if (/^\s+$/.test(unit)) continue; }
+      if (w > 9) { const extra = Math.ceil(w / 9) - 1; n += extra; cur = w - 9 * extra; } else cur += w;
+    }
+    return n;
+  };
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
@@ -530,14 +579,15 @@ function statusCardHeight(s, editorOpen) {
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
   // the column, and wrapped at 280 px), so the values form one column; a line's small note and its button sit under its
-  // value, in that column
-  const row = (k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
-    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
+  // value, in that column. A value with no place to break (a Windows path: \ is not one) wraps anywhere instead of
+  // pushing the card past a narrow chat (VV on #46)
+  const row =(k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span style="min-width:0;overflow-wrap:anywhere">' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
     (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('MP4 导出', mp4Line(s.mp4)) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
     row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model)
       ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
@@ -625,8 +675,10 @@ const HANDLERS = {
     const open = !!(editor && editor.status === 200);
     let asr = null;
     try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
-    return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    const card = { ffmpeg: s.ffmpeg, project: bound && bound.name, asr, mp4 };
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard(card, open), height: statusCardHeight(card, open) });
+    return { engine: publicStart(s), mp4Export: mp4Export(mp4), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
@@ -712,7 +764,10 @@ const HANDLERS = {
       const c = { phase: 'failed', stage: 'start', code: e.code, reason: e.message, again };
       sendCard(callId, c); return plainFailure(c);
     }
-    return exportView(followExport(job, { session, callId, folder, dir, again }));
+    const f = followExport(job, { session, callId, folder, dir, again });
+    // which FFmpeg encodes an MP4 here, as the export starts (the engine's job does not say which program it ran)
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    return Object.assign(exportView(f), { mp4Export: mp4Export(mp4) });
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },

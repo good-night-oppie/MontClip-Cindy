@@ -354,5 +354,46 @@ function externalFfmpegSettings(data, opts = {}) {
   const within = (parent, child) => { const r = path.relative(norm(parent), norm(child)); return !r || (!r.startsWith("..") && !path.isAbsolute(r)); };
   return within(realData, realFile) || within(realDir, realData) ? null : file;
 }
-module.exports = { fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+/* Which FFmpeg encodes an MP4 (H.264) export, from the engine's GET /api/export/h264 (what the export dialog reads).
+   The download is an LGPL build with no software H.264 encoder, only graphics-card ones (DD on #46): without a usable
+   one the user's own FFmpeg with libx264 encodes every MP4 (europa, 2026-11-08: /usr/bin/ffmpeg 5.1 while the status
+   said only "downloaded").
+   from: "settings" (the program in external-ffmpeg.json) · "env" (MONTCLIP_EXTERNAL_FFMPEG) · "path" (the first one on
+   PATH, engine efa1be7a and later) · "own" (the user's own, an engine that does not say which) · "bundled" (the
+   download, e.g. its graphics-card encoder) · "none" (no H.264 encoder). program / version only for "settings": the
+   engine does not say which program it found on PATH, and none is guessed. null when there is nothing to read. */
+const MP4_SOURCES = ["settings", "env", "path"];
+function h264Export(body, opts = {}) {
+  if (!body || typeof body !== "object") return null;
+  const encoder = typeof body.encoder === "string" && body.encoder ? body.encoder : null;
+  if (!encoder) return { encoder: null, from: "none" };
+  const ext = body.external && typeof body.external === "object" ? body.external : {};
+  if (encoder !== "libx264" || ext.ok !== true) return { encoder, from: "bundled" };
+  const from = MP4_SOURCES.includes(ext.source) ? ext.source : "own";
+  const out = { encoder, from };
+  if (from === "settings" && typeof opts.program === "string" && opts.program) {
+    out.program = opts.program;
+    if (typeof opts.version === "string" && opts.version) out.version = opts.version;
+  }
+  return out;
+}
+/** "5.1.9-0+deb12u1" from the first line of `ffmpeg -version`; null when it is not one. */
+function ffmpegVersionFrom(text) {
+  const m = /^ffmpeg version (\S+)/.exec(String(text || ""));
+  return m ? m[1] : null;
+}
+/** A path under the home folder as ~/…, so the user's name stays off the status card. On Windows case does not matter
+ *  and either slash is one (QQ on #46: c:\users\<name>\… and C:/Users/<name>/… kept the name), so both are compared
+ *  that way and the rest is written with \. */
+function maskHome(p, home = require("node:os").homedir(), platform = process.platform) {
+  const s = String(p);
+  if (!home) return s;
+  const win = platform === "win32", sep = win ? "\\" : "/";
+  const same = (x) => win ? x.replace(/\//g, "\\").toLowerCase() : x;
+  const h = same(String(home)).replace(/[\\/]+$/, ""), t = same(s);
+  if (!h) return s;
+  if (t === h) return "~";
+  return t.startsWith(h + sep) ? "~" + sep + (win ? s.replace(/\//g, "\\") : s).slice(h.length).replace(/^[\\/]+/, "") : s;
+}
+module.exports = { h264Export, ffmpegVersionFrom, maskHome, fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };

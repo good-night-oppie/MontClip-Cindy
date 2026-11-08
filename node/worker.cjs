@@ -15,7 +15,8 @@ const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
-  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, fileHostFrom, externalFfmpegSettings } = require("./lib.cjs");
+  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, fileHostFrom, externalFfmpegSettings,
+  h264Export, ffmpegVersionFrom, maskHome } = require("./lib.cjs");
 const { planAsr, installAsr, placesOk, cleanupStaging } = require("./asr-install.cjs");
 const asrRuntime = () => JSON.parse(fs.readFileSync(path.join(__dirname, "asr-runtime.json"), "utf8"));
 
@@ -89,6 +90,7 @@ function freePort(port) {
   });
 }
 
+let extSettingsFile = null;   // the external-ffmpeg.json the engine was given, or null
 let started = null, starting = null;   // the running engine: {origin, port, token, tools, callTool, …}
 function api(method, urlPath, body) {
   return new Promise((resolve, reject) => {
@@ -124,6 +126,7 @@ async function boot() {
   const extSettings = externalFfmpegSettings(DATA);
   if (extSettings) process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS = extSettings;
   else delete process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS;
+  extSettingsFile = extSettings || null;
   require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
   started = { origin: `http://127.0.0.1:${port}`, port, token };
   let up = false;
@@ -152,6 +155,27 @@ const METHODS = {
     const s = await start();
     return { origin: s.origin, url: `${s.origin}/?host=cindy&token=${s.token}`, ffmpeg: s.ffmpeg, node: process.version,
       dataDir: DATA, browser: !!s.browser, envFilled: s.envFilled };
+  },
+  /* Which FFmpeg encodes an MP4 (H.264) export here: the engine's own answer (GET /api/export/h264, what its export
+     dialog reads), plus — only for the program named in the settings file, which the engine has just checked and
+     accepted — that program (home folder as ~) and its version line. */
+  async "montclip/h264"() {
+    await start();
+    const r = await api("GET", "/api/export/h264");
+    if (r.status !== 200) return null;
+    const ext = r.body && r.body.external;
+    let program = null, version = null;
+    if (r.body && r.body.encoder === "libx264" && ext && ext.ok === true && ext.source === "settings" && extSettingsFile) {
+      try {
+        const file = JSON.parse(fs.readFileSync(extSettingsFile, "utf8")).path;
+        if (typeof file === "string" && path.isAbsolute(file) && fs.statSync(file).isFile()) {
+          program = maskHome(file);
+          const v = spawnSync(file, ["-hide_banner", "-version"], { encoding: "utf8", timeout: 5000, windowsHide: true });
+          version = v.status === 0 ? ffmpegVersionFrom(v.stdout) : null;
+        }
+      } catch { program = null; version = null; }
+    }
+    return h264Export(r.body, { program, version });
   },
   async "montclip/tools"() {
     const s = await start();
