@@ -468,10 +468,11 @@ function asrLine(a, lang) {
 }
 /** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
-/* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no H.264 encoder of its own,
-   so without a graphics card the user's own FFmpeg encodes every MP4 — the 导出工具 line alone hid that (europa,
-   2026-11-08). JJ's words (#46): only what is known — from PATH the engine does not say which program, and none is
-   guessed; the settings file named it, which is not the same as the user choosing it. */
+/* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no software H.264 encoder
+   (libx264), only graphics-card ones (DD on #46), so without a usable one the user's own FFmpeg encodes every MP4 —
+   the 导出工具 line alone hid that (europa, 2026-11-08). JJ's words (#46): only what is known — from PATH the engine
+   does not say which program, and none is guessed; the settings file named it, which is not the same as the user
+   choosing it. */
 function mp4Line(h) {
   if (!h) return '现在查不到是哪个 ffmpeg';
   if (h.from === 'none') return '现在导不了 MP4（没有找到能用的编码工具）';
@@ -496,11 +497,11 @@ const MP4_PLAIN = 'When you tell the streamer, say it in plain words (for exampl
 function mp4Note(h) { return mp4Fact(h) + ' ' + MP4_PLAIN; }
 function mp4Fact(h) {
   if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
-  if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has none of its own, and no graphics-card encoder or own FFmpeg with libx264 was found).';
+  if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has no software H.264 encoder, and no graphics-card encoder or own FFmpeg with libx264 was found).';
   if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
   const which = h.from === 'settings' ? (h.program ? programName(h.program) + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
     : h.from === 'path' ? 'the first FFmpeg with libx264 on PATH' : h.from === 'env' ? 'the FFmpeg named in MONTCLIP_EXTERNAL_FFMPEG' : "this computer's own FFmpeg";
-  return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no H.264 encoder of its own. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
+  return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no software H.264 encoder (libx264) and no usable graphics-card encoder here. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
 }
 /** The status card's values, in order (the card and its height estimate read the same list). */
 function statusRows(s, editorOpen) {

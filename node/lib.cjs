@@ -355,8 +355,9 @@ function externalFfmpegSettings(data, opts = {}) {
   return within(realData, realFile) || within(realDir, realData) ? null : file;
 }
 /* Which FFmpeg encodes an MP4 (H.264) export, from the engine's GET /api/export/h264 (what the export dialog reads).
-   The download is an LGPL build with no H.264 encoder of its own: without a graphics card the user's own FFmpeg with
-   libx264 encodes every MP4 (europa, 2026-11-08: /usr/bin/ffmpeg 5.1 while the status said only "downloaded").
+   The download is an LGPL build with no software H.264 encoder, only graphics-card ones (DD on #46): without a usable
+   one the user's own FFmpeg with libx264 encodes every MP4 (europa, 2026-11-08: /usr/bin/ffmpeg 5.1 while the status
+   said only "downloaded").
    from: "settings" (the program in external-ffmpeg.json) · "env" (MONTCLIP_EXTERNAL_FFMPEG) · "path" (the first one on
    PATH, engine efa1be7a and later) · "own" (the user's own, an engine that does not say which) · "bundled" (the
    download, e.g. its graphics-card encoder) · "none" (no H.264 encoder). program / version only for "settings": the
