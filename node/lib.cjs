@@ -381,11 +381,18 @@ function ffmpegVersionFrom(text) {
   const m = /^ffmpeg version (\S+)/.exec(String(text || ""));
   return m ? m[1] : null;
 }
-/** A path under the home folder as ~/…, so the user's name stays out of what an agent reads. */
-function maskHome(p, home = require("node:os").homedir()) {
+/** A path under the home folder as ~/…, so the user's name stays off the status card. On Windows case does not matter
+ *  and either slash is one (QQ on #46: c:\users\<name>\… and C:/Users/<name>/… kept the name), so both are compared
+ *  that way and the rest is written with \. */
+function maskHome(p, home = require("node:os").homedir(), platform = process.platform) {
   const s = String(p);
   if (!home) return s;
-  return s === home ? "~" : s.startsWith(home.endsWith(path.sep) ? home : home + path.sep) ? "~" + path.sep + s.slice(home.length).replace(/^[\\/]+/, "") : s;
+  const win = platform === "win32", sep = win ? "\\" : "/";
+  const same = (x) => win ? x.replace(/\//g, "\\").toLowerCase() : x;
+  const h = same(String(home)).replace(/[\\/]+$/, ""), t = same(s);
+  if (!h) return s;
+  if (t === h) return "~";
+  return t.startsWith(h + sep) ? "~" + sep + (win ? s.replace(/\//g, "\\") : s).slice(h.length).replace(/^[\\/]+/, "") : s;
 }
 module.exports = { h264Export, ffmpegVersionFrom, maskHome, fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };

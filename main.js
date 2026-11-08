@@ -479,12 +479,18 @@ function mp4Line(h) {
     : h.from === 'path' ? '系统里找到的 ffmpeg' : h.from === 'env' ? '启动时指定的 ffmpeg' : '这台电脑上的 ffmpeg';
   return '用' + which + '，不是 MontClip 下载的那份';
 }
-/** The same for an agent, in montclip_status and when montclip_export starts. */
+/** The program's file name only, for an agent: the folders it is in (the full path is on the card) stay here (QQ on #46). */
+const programName = (p) => String(p).split(/[\\/]/).pop();
+/** What an agent reads in montclip_status and when montclip_export starts: the card's facts with the program's name only. */
+function mp4Export(h) {
+  return Object.assign({}, h, h && h.program ? { program: programName(h.program) } : {}, { note: mp4Note(h) });
+}
+/** The same in words for an agent. */
 function mp4Note(h) {
   if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
   if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has none of its own, and no graphics-card encoder or own FFmpeg with libx264 was found).';
   if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
-  const which = h.from === 'settings' ? (h.program ? h.program + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
+  const which = h.from === 'settings' ? (h.program ? programName(h.program) + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
     : h.from === 'path' ? 'the first FFmpeg with libx264 on PATH' : h.from === 'env' ? 'the FFmpeg named in MONTCLIP_EXTERNAL_FFMPEG' : "this computer's own FFmpeg";
   return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no H.264 encoder of its own. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
 }
@@ -618,7 +624,7 @@ const HANDLERS = {
     const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
     const card = { ffmpeg: s.ffmpeg, project: bound && bound.name, asr, mp4 };
     cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard(card, open), height: statusCardHeight(card, open) });
-    return { engine: publicStart(s), mp4Export: Object.assign({}, mp4, { note: mp4Note(mp4) }), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+    return { engine: publicStart(s), mp4Export: mp4Export(mp4), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
@@ -707,7 +713,7 @@ const HANDLERS = {
     const f = followExport(job, { session, callId, folder, dir, again });
     // which FFmpeg encodes an MP4 here, as the export starts (the engine's job does not say which program it ran)
     const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
-    return Object.assign(exportView(f), { mp4Export: Object.assign({}, mp4, { note: mp4Note(mp4) }) });
+    return Object.assign(exportView(f), { mp4Export: mp4Export(mp4) });
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
