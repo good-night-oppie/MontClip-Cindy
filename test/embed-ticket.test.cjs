@@ -29,6 +29,9 @@ test("source: the ticket flow is wired and the session id is out of the frame ad
   assert.doesNotMatch(panel, /projectId/, "the panel does not read a projectId out of editor-state");
   assert.doesNotMatch(panel, /\/api\/ui\/command/, "the panel never sends an unscoped UI command");
   assert.match(worker, /EXPORT_TASK_MISMATCH/, "the worker's per-task export check stays");
+  assert.match(panel, /channelReady/, "the panel knows whether it holds a task channel");
+  assert.match(panel, /if \(!channelReady\) \{ showNoTask\(\); return; \}/, "without a channel the panel never reads /api/project");
+  assert.match(panel, /showNoTask\(\);\r?\n  load\(\);/, "the panel starts fail-closed, before any ticket answer");
 });
 
 test("packed worker: tickets are 64-hex, 60 s, fresh per ask; channel trade is one-time; unbound UI is 409", { timeout: 60000 }, async (t) => {

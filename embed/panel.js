@@ -8,8 +8,21 @@
   "use strict";
   const M = window.MontClipPanelModel;
   const $ = (id) => document.getElementById(id);
-  let ch = null;
+  let ch = null, channelReady = false;
   let project = { clips: [], media: [] }, list = [], editor = null, editorSeen = 0, now = -1;
+  /* Without a task ticket this page does not know whose task it belongs to (in Cindy the panel is a global tab
+     with no session in its address), so it must not read the engine's currently open project, show lines or seek:
+     that is how one task's lines used to appear in another task (MontClip-Cindy#48). The one prompt below is a
+     placeholder until JJ finalises the words. */
+  const NO_TASK_TEXT = '这个面板现在分不清你打开的是哪个任务，所以先不显示文稿。打开这个任务的剪辑器后，再回到这里看。'; // 待 JJ 定稿
+  const linesEmptyText = $("linesEmpty").textContent, propsEmptyText = $("propsEmpty").textContent;
+  function showNoTask() {
+    project = { clips: [], media: [] }; list = []; editor = null;
+    $("lines").textContent = "";
+    $("linesEmpty").textContent = NO_TASK_TEXT; $("linesEmpty").hidden = false;
+    $("props").textContent = "";
+    $("propsEmpty").textContent = NO_TASK_TEXT; $("propsEmpty").hidden = false;
+  }
 
   /* The framing page's origin (the browser's ancestorOrigins, else the referrer's): the only origin whose
      montclip-host-ticket answers this page takes. */
@@ -38,7 +51,10 @@
       if (ch) { try { ch.close(); } catch (e) { } }
       ch = new BroadcastChannel("montclip-editor:" + body.channel);
       ch.onmessage = onEditorState;
+      channelReady = true;
+      $("linesEmpty").textContent = linesEmptyText; $("propsEmpty").textContent = propsEmptyText;
       ch.postMessage({ type: "hello" });
+      load();
       return true;
     } catch (e) { return false; }
   }
@@ -143,6 +159,7 @@
   }
 
   async function load() {
+    if (!channelReady) { showNoTask(); return; }
     try {
       const r = await fetch("/api/project", { cache: "no-store" });
       if (!r.ok) return;
@@ -154,5 +171,6 @@
      so silence is not the editor going away. The last highlight and selection stay until the editor says otherwise;
      a click still checks how lately the channel was heard from. */
   new EventSource("/api/events").addEventListener("change", load);
+  showNoTask();
   load();
 })();

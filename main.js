@@ -349,9 +349,35 @@ function copyFailureText(c, lang) {
   const t = EXPORT_TEXT[lang === 'en' ? 'en' : 'zh'];
   return Object.hasOwn(t.why, c.code || '') ? t.copyFailed(t.why[c.code]) : t.failedWhy.other;
 }
+/* The export report's checks in the words the streamer reads (MontClip#229 C1, JJ's final sentences): a clip that
+   came out silent, and a clip whose source took too long to read back, are said here, not in the engine's English
+   check line. {n} counts pieces with a picture; a sound on its own is said by its time only (the -track sentence).
+   Times are m:ss on the timeline, as the engine's own exportCheckText formats them. */
+function fmtTimeline(t) { const s = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function clipSilentText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）是无声的，请确认是不是你想要的。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音是无声的，请确认是不是你想要的。';
+}
+function clipUncheckedText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）在成片里没有声音，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音在成片里是无声的，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。';
+}
+function exportReportText(report) {
+  if (!report) return '';
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  if (!checks.length) return report.line || '';
+  return checks.map((c) => {
+    if (c && c.code === 'EXPORT_CLIP_SILENT') return clipSilentText(c);
+    if (c && c.code === 'EXPORT_CLIP_UNCHECKED') return clipUncheckedText(c);
+    return (c && c.text) || '';
+  }).filter(Boolean).join(' · ');
+}
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
   const text = c.code === 'NO_JOB' ? '这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
+    /* EXPORT_AUDIO_FAILED: the engine's error is already JJ's sentence in the streamer's language (#231) — say
+       that, not the generic fallback (MontClip#229 C2). */
+    : c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim() ? String(c.reason).trim()
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -545,7 +571,7 @@ async function runFollow(f, job) {
     return;
   }
   const outs = job.result && Array.isArray(job.result.outputs) ? job.result.outputs : [];
-  f.report = outs.map((o) => o.report && o.report.line).filter(Boolean);
+  f.report = outs.map((o) => exportReportText(o.report)).filter(Boolean);
   if (f.dir) {
     f.phase = 'copy';
     sendCard(f.callId, { phase: 'copy', folder: f.folder });
