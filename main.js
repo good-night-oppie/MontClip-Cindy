@@ -470,23 +470,31 @@ function asrLine(a, lang) {
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
 /* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no H.264 encoder of its own,
    so without a graphics card the user's own FFmpeg encodes every MP4 — the 导出工具 line alone hid that (europa,
-   2026-11-08). */
+   2026-11-08). JJ's words (#46): only what is known — from PATH the engine does not say which program, and none is
+   guessed; the settings file named it, which is not the same as the user choosing it. */
 function mp4Line(h) {
-  if (!h) return '现在查不到';
-  if (h.from === 'none') return '这台电脑导不了 MP4';
+  if (!h) return '现在查不到是哪个 ffmpeg';
+  if (h.from === 'none') return '现在导不了 MP4（没有找到能用的编码工具）';
   if (h.from === 'bundled') return '用 MontClip 下载的 ffmpeg';
-  const which = h.from === 'settings' ? (h.program ? '这台电脑上的 ' + h.program + (h.version ? '（' + h.version + '）' : '') : '设置里选的 ffmpeg')
-    : h.from === 'path' ? '系统里找到的 ffmpeg' : h.from === 'env' ? '启动时指定的 ffmpeg' : '这台电脑上的 ffmpeg';
+  const which = h.from === 'settings' ? (h.program ? '设置文件里指定的 ' + h.program + (h.version ? '（版本 ' + h.version + '）' : '') : '设置文件里指定的 ffmpeg')
+    : h.from === 'path' ? '系统里找到的 ffmpeg（具体是哪一个，这里看不出来）' : h.from === 'env' ? '启动时指定的 ffmpeg'
+    : '这台电脑自己的 ffmpeg（具体是哪一个，这里看不出来）';
   return '用' + which + '，不是 MontClip 下载的那份';
 }
 /** The program's file name only, for an agent: the folders it is in (the full path is on the card) stay here (QQ on #46). */
 const programName = (p) => String(p).split(/[\\/]/).pop();
-/** What an agent reads in montclip_status and when montclip_export starts: the card's facts with the program's name only. */
+/** What an agent reads in montclip_status and when montclip_export starts: the card's facts with the program's name only,
+ *  and a program and version only for the one the settings file names (none is guessed for another source). */
 function mp4Export(h) {
-  return Object.assign({}, h, h && h.program ? { program: programName(h.program) } : {}, { note: mp4Note(h) });
+  const o = Object.assign({}, h, h && h.program ? { program: programName(h.program) } : {}, { note: mp4Note(h) });
+  if (!h || h.from !== 'settings') { delete o.program; delete o.version; }
+  return o;
 }
+/* JJ (#46): so an agent tells the streamer in plain words, not the version strings, variable names or folders below */
+const MP4_PLAIN = 'When you tell the streamer, say it in plain words (for example "MP4 files are made by this computer\'s own FFmpeg, not the one MontClip downloaded"); don\'t read out version strings, environment variable names or folder names.';
 /** The same in words for an agent. */
-function mp4Note(h) {
+function mp4Note(h) { return mp4Fact(h) + ' ' + MP4_PLAIN; }
+function mp4Fact(h) {
   if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
   if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has none of its own, and no graphics-card encoder or own FFmpeg with libx264 was found).';
   if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
