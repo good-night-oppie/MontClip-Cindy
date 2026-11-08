@@ -25,7 +25,7 @@ const JJ_MP4 = {
   none: "现在导不了 MP4（没有找到能用的编码工具）",
   unknown: "现在查不到是哪个 ffmpeg",
 };
-const JJ_PLAIN = "When you tell the streamer, say it in plain words (for example \"MP4 files are made by this computer's own FFmpeg, not the one MontClip downloaded\"); don't read out version strings, environment variable names or folder names.";
+const JJ_PLAIN = "When you tell the streamer, say it in plain words and only as far as the fact above goes; don't name any other source for the FFmpeg, and don't read out version strings, environment variable names or folder names.";
 
 function load() {
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
@@ -127,6 +127,12 @@ test("an agent reads the same in montclip_status and when montclip_export starts
     { encoder: "libx264", from: "env" }, { encoder: "libx264", from: "path" }, { encoder: "libx264", from: "own" },
     { encoder: "h264_nvenc", from: "bundled" }, { encoder: null, from: "none" }])
     assert.ok(mp4Note(h).endsWith(" " + JJ_PLAIN), JSON.stringify(h));
+  // JJ (#46 real run): the plain-words part names no source, so it can never contradict the fact before it
+  const { mp4Fact } = load();
+  for (const h of [null, { encoder: "h264_nvenc", from: "bundled" }, { encoder: "libx264", from: "settings" }, { encoder: "libx264", from: "env" },
+    { encoder: "libx264", from: "path" }, { encoder: null, from: "none" }])
+    assert.equal(mp4Note(h), mp4Fact(h) + " " + JJ_PLAIN, JSON.stringify(h));
+  assert.doesNotMatch(mp4Note({ encoder: "h264_nvenc", from: "bundled" }), /not the one MontClip downloaded|own FFmpeg/);
   // both tools put it in their answer
   assert.match(MAIN, /async montclip_status[\s\S]*?mp4Export/);
   assert.match(MAIN, /async montclip_export[\s\S]*?mp4Export/);

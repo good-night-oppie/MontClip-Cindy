@@ -491,8 +491,9 @@ function mp4Export(h) {
   if (!h || h.from !== 'settings') { delete o.program; delete o.version; }
   return o;
 }
-/* JJ (#46): so an agent tells the streamer in plain words, not the version strings, variable names or folders below */
-const MP4_PLAIN = 'When you tell the streamer, say it in plain words (for example "MP4 files are made by this computer\'s own FFmpeg, not the one MontClip downloaded"); don\'t read out version strings, environment variable names or folder names.';
+/* JJ (#46): so an agent tells the streamer in plain words, not the version strings, variable names or folders below.
+   It names no source itself, so it can't contradict the fact before it (the old example did, for a bundled FFmpeg). */
+const MP4_PLAIN = 'When you tell the streamer, say it in plain words and only as far as the fact above goes; don\'t name any other source for the FFmpeg, and don\'t read out version strings, environment variable names or folder names.';
 /** The same in words for an agent. */
 function mp4Note(h) { return mp4Fact(h) + ' ' + MP4_PLAIN; }
 function mp4Fact(h) {
