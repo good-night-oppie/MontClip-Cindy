@@ -92,11 +92,14 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-card-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
   const cases = [["nothing installed", { engine: false, model: false, modelMb: 240 }], ["no model", { engine: true, model: false, modelMb: 240 }], ["installed", { engine: true, model: true, modelMb: 240 }], ["not known", null]];
-  for (const width of [280, 360]) for (const [what, asr] of cases) {
-    // the longest MP4 line: a program and its version (europa, 2026-11-08)
-    const s = { ffmpeg: "missing", project: "演示任务的项目", asr, mp4: { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" } };
+  // the longest MP4 lines: a program and its version (europa, 2026-11-08), and JJ's path / own sentences (#46)
+  const mp4s = [["settings", { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }],
+    ["path", { encoder: "libx264", from: "path" }], ["own", { encoder: "libx264", from: "own" }]];
+  for (const width of [280, 360]) for (const [mp4what, mp4] of mp4s) for (const [asrWhat, asr] of cases) {
+    const what = asrWhat + ", MP4 from " + mp4what;
+    const s = { ffmpeg: "missing", project: "演示任务的项目", asr, mp4 };
     const card = ctx.statusCard(s, false);
-    const page = path.join(dir, `card-${width}-${cases.findIndex((c) => c[0] === what)}.html`);
+    const page = path.join(dir, `card-${width}-${mp4what}-${cases.findIndex((c) => c[0] === asrWhat)}.html`);
     fs.writeFileSync(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;width:${width}px;font:13px system-ui,sans-serif">${card}` +
       `<script>const root=document.body.firstElementChild, rows=[...root.querySelectorAll('div[style*="display:flex"]')];` +
       `const btns=root.querySelectorAll('button'), btn=btns[btns.length-1], r=root.getBoundingClientRect(), b=btn?btn.getBoundingClientRect():null;` +

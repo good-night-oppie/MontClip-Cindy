@@ -12,6 +12,20 @@ const ROOT = path.join(__dirname, "..");
 const MAIN = fs.readFileSync(path.join(ROOT, "main.js"), "utf8");
 const WORKER = fs.readFileSync(path.join(ROOT, "node", "worker.cjs"), "utf8");
 
+/* JJ's final words for the 「MP4 导出」 line and the agent's note (#46, comment 6719719370), punctuation included. */
+const NOT = "，不是 MontClip 下载的那份";
+const JJ_MP4 = {
+  settings: (program, version) => "用设置文件里指定的 " + program + "（版本 " + version + "）" + NOT,
+  settingsNoProgram: "用设置文件里指定的 ffmpeg" + NOT,
+  env: "用启动时指定的 ffmpeg" + NOT,
+  path: "用系统里找到的 ffmpeg（具体是哪一个，这里看不出来）" + NOT,
+  own: "用这台电脑自己的 ffmpeg（具体是哪一个，这里看不出来）" + NOT,
+  bundled: "用 MontClip 下载的 ffmpeg",
+  none: "现在导不了 MP4（没有找到能用的编码工具）",
+  unknown: "现在查不到是哪个 ffmpeg",
+};
+const JJ_PLAIN = "When you tell the streamer, say it in plain words (for example \"MP4 files are made by this computer's own FFmpeg, not the one MontClip downloaded\"); don't read out version strings, environment variable names or folder names.";
+
 function load() {
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
@@ -61,19 +75,37 @@ test("the version comes from the first line of ffmpeg -version, and the home fol
 test("the status card's MP4 line names the program, and says when it is not the download", () => {
   const { mp4Line, statusCard } = load();
   assert.equal(typeof mp4Line, "function");
-  const NOT = "，不是 MontClip 下载的那份";
-  assert.equal(mp4Line({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }), "用这台电脑上的 /usr/bin/ffmpeg（5.1.9-0+deb12u1）" + NOT);
-  assert.equal(mp4Line({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg" }), "用这台电脑上的 /usr/bin/ffmpeg" + NOT);
-  assert.equal(mp4Line({ encoder: "libx264", from: "settings" }), "用设置里选的 ffmpeg" + NOT);
-  assert.equal(mp4Line({ encoder: "libx264", from: "path" }), "用系统里找到的 ffmpeg" + NOT);
-  assert.equal(mp4Line({ encoder: "libx264", from: "env" }), "用启动时指定的 ffmpeg" + NOT);
-  assert.equal(mp4Line({ encoder: "libx264", from: "own" }), "用这台电脑上的 ffmpeg" + NOT);
-  assert.equal(mp4Line({ encoder: "h264_nvenc", from: "bundled" }), "用 MontClip 下载的 ffmpeg");
-  assert.equal(mp4Line({ encoder: null, from: "none" }), "这台电脑导不了 MP4");
-  assert.equal(mp4Line(null), "现在查不到");
+  // JJ's final words (#46, comment 6719719370), word for word: one per source, and the line when nothing could be read
+  assert.equal(mp4Line({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }), JJ_MP4.settings("/usr/bin/ffmpeg", "5.1.9-0+deb12u1"));
+  assert.equal(mp4Line({ encoder: "libx264", from: "settings", program: "~\\tools\\ffmpeg.exe", version: "8.0" }), "用设置文件里指定的 ~\\tools\\ffmpeg.exe（版本 8.0），不是 MontClip 下载的那份");
+  assert.equal(mp4Line({ encoder: "libx264", from: "settings" }), JJ_MP4.settingsNoProgram);
+  assert.equal(mp4Line({ encoder: "libx264", from: "env" }), JJ_MP4.env);
+  assert.equal(mp4Line({ encoder: "libx264", from: "path" }), JJ_MP4.path);
+  assert.equal(mp4Line({ encoder: "libx264", from: "own" }), JJ_MP4.own);
+  assert.equal(mp4Line({ encoder: "h264_nvenc", from: "bundled" }), JJ_MP4.bundled);
+  assert.equal(mp4Line({ encoder: null, from: "none" }), JJ_MP4.none);
+  assert.equal(mp4Line(null), JJ_MP4.unknown);
+  // the settings program without a version line: the same sentence without its bracket
+  assert.equal(mp4Line({ encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg" }), "用设置文件里指定的 /usr/bin/ffmpeg，不是 MontClip 下载的那份");
   const card = statusCard({ ffmpeg: "downloaded", project: "p", asr: null, mp4: { encoder: "libx264", from: "path" } }, true);
   assert.ok(card.includes("MP4 导出"), "the line's label");
-  assert.ok(card.includes("用系统里找到的 ffmpeg" + NOT), "its value");
+  assert.ok(card.includes(JJ_MP4.path), "its value");
+});
+
+test("from PATH (or an engine that does not say which) no program is named afterwards, on the card or for the agent", () => {
+  // JJ's check on #46: the engine does not say which program it found, and none is guessed after the fact
+  const { mp4Line, mp4Export } = load();
+  assert.deepEqual(h264Export({ encoder: "libx264", external: { ok: true, source: "path" } }, { program: "/usr/bin/ffmpeg", version: "5.1" }), { encoder: "libx264", from: "path" });
+  for (const from of ["path", "own", "env", "bundled", "none"]) {
+    const h = { encoder: "libx264", from, program: "/usr/bin/ffmpeg", version: "5.1" };
+    assert.doesNotMatch(mp4Line(h), /\/usr\/bin|5\.1/, from + ": the card");
+    const out = mp4Export(h);
+    assert.equal(out.program, undefined, from + ": no program for the agent");
+    assert.equal(out.version, undefined, from + ": no version for the agent");
+    assert.doesNotMatch(out.note, /usr\/bin|ffmpeg 5\.1/, from + ": the note");
+  }
+  assert.equal(mp4Line({ encoder: "libx264", from: "path", program: "/usr/bin/ffmpeg" }), JJ_MP4.path);
+  assert.equal(mp4Line({ encoder: "libx264", from: "own", program: "/usr/bin/ffmpeg" }), JJ_MP4.own);
 });
 
 test("an agent reads the same in montclip_status and when montclip_export starts", () => {
@@ -89,6 +121,11 @@ test("an agent reads the same in montclip_status and when montclip_export starts
   assert.doesNotMatch(mp4Note({ encoder: "h264_nvenc", from: "bundled" }), /not the FFmpeg/);
   assert.match(mp4Note({ encoder: null, from: "none" }), /no H\.264 encoder/);
   assert.match(mp4Note(null), /could not be checked/);
+  // JJ's sentence ends every note, so the agent tells the streamer in plain words
+  for (const h of [null, { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1" }, { encoder: "libx264", from: "settings" },
+    { encoder: "libx264", from: "env" }, { encoder: "libx264", from: "path" }, { encoder: "libx264", from: "own" },
+    { encoder: "h264_nvenc", from: "bundled" }, { encoder: null, from: "none" }])
+    assert.ok(mp4Note(h).endsWith(" " + JJ_PLAIN), JSON.stringify(h));
   // both tools put it in their answer
   assert.match(MAIN, /async montclip_status[\s\S]*?mp4Export/);
   assert.match(MAIN, /async montclip_export[\s\S]*?mp4Export/);
@@ -144,7 +181,7 @@ test("the agent gets only the program's file name; the full path (home folder as
       assert.equal(result.mp4Export.version, "5.1.9");
       for (const [k, v] of Object.entries(result.mp4Export)) assert.doesNotMatch(String(v), /[\\/]/, tool + ": no folder in " + k + ": " + v);
       assert.doesNotMatch(JSON.stringify(result), /someone/, tool + ": no user name");
-      if (tool === "montclip_status") assert.ok(cards.some((c) => c.includes("用这台电脑上的 " + program + "（5.1.9）")), "the card keeps " + program);
+      if (tool === "montclip_status") assert.ok(cards.some((c) => c.includes(JJ_MP4.settings(program, "5.1.9"))), "the card keeps " + program);
     }
   }
 });
