@@ -15,7 +15,9 @@ const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
 const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
-  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, externalFfmpegSettings } = require("./lib.cjs");
+  exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, fileHostFrom, externalFfmpegSettings } = require("./lib.cjs");
+const { planAsr, installAsr, placesOk, cleanupStaging } = require("./asr-install.cjs");
+const asrRuntime = () => JSON.parse(fs.readFileSync(path.join(__dirname, "asr-runtime.json"), "utf8"));
 
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
 
@@ -173,6 +175,30 @@ const METHODS = {
   },
   /* Whether transcription can run here: the engine (with its native part for this system and the VAD) and the speech
      model, as the engine sees them, and where they go. */
+  /* The speech engine, VAD and model this system still needs (node/asr-runtime.json): main.js asks the user, downloads
+     them with cindy.downloads, and hands them to montclip/asr-install. */
+  async "montclip/asr-spec"() {
+    const rt = asrRuntime(), where = placesOk(rt, PLATFORM, DATA);
+    // nothing is asked or fetched when the folders are not the plugin's own (a link into media/ …)
+    if (!where.ok) throw Object.assign(new Error(where.why), { code: where.code });
+    // Clean even when all files were installed just before the previous process exited.
+    cleanupStaging(DATA);
+    const plan = planAsr(rt, PLATFORM, DATA);
+    // the file host the confirm box names: the one ghost.json declares besides github.com
+    const fileHost = fileHostFrom(JSON.parse(fs.readFileSync(path.join(__dirname, "..", "ghost.json"), "utf8")));
+    return { supported: plan.supported, platform: PLATFORM, release: rt.release, fileHost, bytes: plan.bytes, mb: aboutMbFrom(APP)(plan.bytes),
+      missing: plan.missing.map((i) => ({ name: i.name, url: rt.base + i.name, bytes: i.bytes, sha256: i.sha256, license: i.license })) };
+  },
+  /* … and installing them: params.names in order, params.downloads.f0, f1, … the host's files (read before this request
+     ends). Each is measured again (bytes, SHA-256); all are staged in the data folder before any is put in place. */
+  async "montclip/asr-install"(p) {
+    const names = Array.isArray(p.names) ? p.names.map(String) : [];
+    const files = {};
+    names.forEach((n, k) => { if (p.downloads && p.downloads["f" + k]) files[n] = p.downloads["f" + k]; });
+    const out = installAsr({ runtime: asrRuntime(), platform: PLATFORM, data: DATA, files, tmpDir: DATA });
+    note({ event: "asr-installed", files: out.installed });
+    return { ...out, missing: planAsr(asrRuntime(), PLATFORM, DATA).missing.map((i) => i.name) };
+  },
   async "montclip/asr-status"() {
     await start();
     const r = await api("GET", "/api/asr/status");

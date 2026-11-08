@@ -176,5 +176,6 @@
     "protocol": "json-rpc-stdio",
     "lifecycle": "on-demand",
     "idleTimeoutSeconds": 3600
-  }
+  },
+  "confirm": true
 }

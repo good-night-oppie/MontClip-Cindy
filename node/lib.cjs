@@ -309,6 +309,12 @@ function asrModelMb(manifest, aboutMb) {
   const files = manifest && manifest.models && manifest.models.asr && manifest.models.asr.files;
   return files ? aboutMb(Object.values(files).reduce((n, f) => n + f.size, 0)) : null;
 }
+/** Where a release download's files come from: the host ghost.json declares besides github.com (a GitHub release
+ *  download answers 302 to release-assets.githubusercontent.com — measured 2026-11-05). The confirm box names it. */
+function fileHostFrom(ghost) {
+  const hosts = (ghost && ghost.network && Array.isArray(ghost.network.hosts)) ? ghost.network.hosts : [];
+  return hosts.find((h) => h !== "github.com") || null;
+}
 /* The plugin's own settings folder: outside the data folder, where the engine writes (Deja, 2026-11-07 on #35 —
    a path bug in the engine must never be able to plant the settings that name a program to run), and outside the
    plugin folder, which an update replaces. Like the desktop app's userData. MONTCLIP_CINDY_CONFIG overrides it (tests). */
@@ -348,5 +354,5 @@ function externalFfmpegSettings(data, opts = {}) {
   const within = (parent, child) => { const r = path.relative(norm(parent), norm(child)); return !r || (!r.startsWith("..") && !path.isAbsolute(r)); };
   return within(realData, realFile) || within(realDir, realData) ? null : file;
 }
-module.exports = { configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+module.exports = { fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };
