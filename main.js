@@ -69,25 +69,35 @@ let checkFailures = 0, retryStamp = "";
 const downloadId = (platform) => "ffmpeg-" + platform + (checkFailures ? "-r" + checkFailures + "-" + retryStamp : "");
 /* Only fixed codes and fixed sentences reach the agent or an ffmpeg-progress message (MontClip-Cindy#41, JJ's spec
    6717056123): the host's download message, the worker's error and Node's own errors (EPERM, ENOENT … with the full
-   path) never do. Any other code is INSTALL_FAILED. DOWNLOAD_FAILED, DISK_FULL and INSTALL_FAILED are JJ's final words;
-   the others are 待 JJ 定稿 (for now the banner's words for the same reason, ffmpeg-banner.js, JJ 2026-11-04). */
+   path) never do. Any other code is INSTALL_FAILED. JJ's final words, zh and en (#41 6717056123, #45 6717292486);
+   JJ has given no English for DISK_FULL and INSTALL_FAILED yet, so those carry the Chinese only. */
+const FFMPEG_CHECK_FAILED = {
+  zh: '下载下来的文件和预期的不一致，为了安全没有安装。请再下载一次；还不行，点「复制问题信息」发给我们。',
+  en: 'The downloaded file doesn\'t match what was expected, so it wasn\'t installed, to be safe. Download it again; if it still doesn\'t work, use "Copy problem details" and send it to us.',
+};
 const FFMPEG_ERRORS = Object.freeze({
-  DOWNLOAD_FAILED: 'FFmpeg 没有下载成功，请检查网络后再试一次。',
-  DISK_FULL: '磁盘空间不够，清理一些空间后再试一次。',
-  INSTALL_FAILED: 'FFmpeg 没有装成功，可能是文件被占用或被杀毒软件拦住了。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。',
-  CANCELLED: '下载取消了，没有安装。',   // 待 JJ 定稿
-  SIZE_MISMATCH: '下载下来的文件不完整，没有安装。',   // 待 JJ 定稿
-  SHA256_MISMATCH: '下载下来的文件不完整，没有安装。',   // 待 JJ 定稿
-  BAD_ARCHIVE: '下载下来的文件不完整，没有安装。',   // 待 JJ 定稿
-  UNPACK_FAILED: '解压没成功。',   // 待 JJ 定稿
-  UNSUPPORTED_PLATFORM: '这台电脑的系统暂时没有对应的导出工具，导出和降噪用不了。',   // 待 JJ 定稿
-  HOST_TOO_OLD: 'Cindy 版本太旧，装不了导出工具。先把 Cindy 更新到最新，再回来点下载。',   // 待 JJ 定稿
+  DOWNLOAD_FAILED: { zh: 'FFmpeg 没有下载成功，请检查网络后再试一次；还不行，点「复制问题信息」发给我们。',
+    en: 'FFmpeg couldn\'t be downloaded. Check your network and try again; if it still doesn\'t work, use "Copy problem details" and send it to us.' },
+  DISK_FULL: { zh: '磁盘空间不够，清理一些空间后再试一次。' },
+  INSTALL_FAILED: { zh: 'FFmpeg 没有装成功，可能是文件被占用或被杀毒软件拦住了。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。' },
+  CANCELLED: { zh: '你取消了下载，没有安装。需要的话，可以再点一次下载。',
+    en: 'The download was cancelled and nothing was installed. If you need it, you can start the download again.' },
+  SIZE_MISMATCH: FFMPEG_CHECK_FAILED,
+  SHA256_MISMATCH: FFMPEG_CHECK_FAILED,
+  BAD_ARCHIVE: FFMPEG_CHECK_FAILED,
+  UNPACK_FAILED: { zh: '下载好了，但解压没成功，没有安装。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。',
+    en: 'The download finished, but unpacking didn\'t work, so nothing was installed. Close any related programs and try again; if it still doesn\'t work, use "Copy problem details" and send it to us.' },
+  UNSUPPORTED_PLATFORM: { zh: '这台电脑的系统暂时没有可以直接下载的 FFmpeg。你可以自己装一个 FFmpeg，再在软件里选它。',
+    en: 'This computer\'s system doesn\'t have an FFmpeg we can download directly. You can install an FFmpeg yourself and then select it in the app.' },
+  HOST_TOO_OLD: { zh: '你的 Cindy 版本太旧，装不了 FFmpeg。先把 Cindy 更新到最新，再回来点下载。',
+    en: 'Your Cindy is too old to install FFmpeg. Update Cindy to the latest version, then come back and click download.' },
 });
 const FFMPEG_CODE_ALIASES = { ENOSPC: 'DISK_FULL', EDQUOT: 'DISK_FULL' };
 function ffmpegSafeFailure(code, need) {
   const c = typeof code === 'string' && Object.prototype.hasOwnProperty.call(FFMPEG_CODE_ALIASES, code) ? FFMPEG_CODE_ALIASES[code] : code;
   const safe = typeof c === 'string' && Object.prototype.hasOwnProperty.call(FFMPEG_ERRORS, c) ? c : 'INSTALL_FAILED';
-  return { error: FFMPEG_ERRORS[safe], code: safe, ...(safe === 'DISK_FULL' && Number.isFinite(need) && need > 0 ? { need } : {}) };
+  const t = FFMPEG_ERRORS[safe];
+  return { error: t.zh, ...(t.en ? { errorEn: t.en } : {}), code: safe, ...(safe === 'DISK_FULL' && Number.isFinite(need) && need > 0 ? { need } : {}) };
 }
 function installFfmpeg() {
   if (installing) return installing;

@@ -14,11 +14,23 @@ const WIN_HOME = "C:\\Users\\SecretName测试用户\\AppData\\Local\\MontClip";
 const POSIX_HOME = "/home/SecretName测试用户/.local/share/montclip";
 const NAMES = ["SecretName", "测试用户"];
 const FORBIDDEN = ["C:\\", "\\Users\\", "/home/", "/Users/", "AppData", ...NAMES, "EPERM", "ENOENT", "EACCES", "ENOSPC", "EBUSY"];
-// JJ's final sentences (spec 6717056123), word for word
+// JJ's final sentences, word for word (#41 spec 6717056123, #45 6717292486); en: null where JJ has given none yet
+const CHECK = { zh: "下载下来的文件和预期的不一致，为了安全没有安装。请再下载一次；还不行，点「复制问题信息」发给我们。",
+  en: "The downloaded file doesn't match what was expected, so it wasn't installed, to be safe. Download it again; if it still doesn't work, use \"Copy problem details\" and send it to us." };
 const JJ = {
-  DOWNLOAD_FAILED: "FFmpeg 没有下载成功，请检查网络后再试一次。",
-  DISK_FULL: "磁盘空间不够，清理一些空间后再试一次。",
-  INSTALL_FAILED: "FFmpeg 没有装成功，可能是文件被占用或被杀毒软件拦住了。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。",
+  DOWNLOAD_FAILED: { zh: "FFmpeg 没有下载成功，请检查网络后再试一次；还不行，点「复制问题信息」发给我们。",
+    en: "FFmpeg couldn't be downloaded. Check your network and try again; if it still doesn't work, use \"Copy problem details\" and send it to us." },
+  DISK_FULL: { zh: "磁盘空间不够，清理一些空间后再试一次。", en: null },
+  INSTALL_FAILED: { zh: "FFmpeg 没有装成功，可能是文件被占用或被杀毒软件拦住了。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。", en: null },
+  CANCELLED: { zh: "你取消了下载，没有安装。需要的话，可以再点一次下载。",
+    en: "The download was cancelled and nothing was installed. If you need it, you can start the download again." },
+  SIZE_MISMATCH: CHECK, SHA256_MISMATCH: CHECK, BAD_ARCHIVE: CHECK,
+  UNPACK_FAILED: { zh: "下载好了，但解压没成功，没有安装。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。",
+    en: "The download finished, but unpacking didn't work, so nothing was installed. Close any related programs and try again; if it still doesn't work, use \"Copy problem details\" and send it to us." },
+  UNSUPPORTED_PLATFORM: { zh: "这台电脑的系统暂时没有可以直接下载的 FFmpeg。你可以自己装一个 FFmpeg，再在软件里选它。",
+    en: "This computer's system doesn't have an FFmpeg we can download directly. You can install an FFmpeg yourself and then select it in the app." },
+  HOST_TOO_OLD: { zh: "你的 Cindy 版本太旧，装不了 FFmpeg。先把 Cindy 更新到最新，再回来点下载。",
+    en: "Your Cindy is too old to install FFmpeg. Update Cindy to the latest version, then come back and click download." },
 };
 const WHITELIST = ["DOWNLOAD_FAILED", "DISK_FULL", "INSTALL_FAILED", "CANCELLED", "SIZE_MISMATCH", "SHA256_MISMATCH", "BAD_ARCHIVE",
   "UNPACK_FAILED", "UNSUPPORTED_PLATFORM", "HOST_TOO_OLD"];
@@ -34,13 +46,13 @@ function assertClean(what, value) {
 const rpcError = (e) => ({ ok: false, errorCode: "PROTOCOL_ERROR", message: String(e.message || e),
   data: { ...(typeof e.code === "string" ? { code: e.code } : {}), ...(Number.isFinite(e.need) ? { need: e.need } : {}) } });
 
-function host({ spec, download, install }) {
+function host({ spec, download, install, noDownloads }) {
   let listener = null;
   const progress = [];
   const cindy = {
     onHostMessage: (fn) => { listener = fn; },
     send: async () => ({ ok: true }),
-    downloads: { start: download || (async (p) => ({ ok: true, token: "t", bytes: p.bytes, sha256: p.sha256 })) },
+    downloads: noDownloads ? undefined : { start: download || (async (p) => ({ ok: true, token: "t", bytes: p.bytes, sha256: p.sha256 })) },
     node: {
       async request(r) {
         if (r.method === "montclip/ffmpeg-spec") {
@@ -67,8 +79,9 @@ async function expectSafe(h, code) {
   assert.equal(sent.ok, true, JSON.stringify(sent));
   assert.ok(WHITELIST.includes(sent.result.code), "code " + sent.result.code);
   assert.equal(sent.result.code, code);
-  if (JJ[code]) assert.equal(sent.result.error, JJ[code]);
-  assert.deepEqual(Object.keys(sent.result).filter((k) => !["error", "code", "need"].includes(k)), [], JSON.stringify(sent.result));
+  assert.equal(sent.result.error, JJ[code].zh, code + " zh");
+  assert.equal(sent.result.errorEn, JJ[code].en === null ? undefined : JJ[code].en, code + " en");
+  assert.deepEqual(Object.keys(sent.result).filter((k) => !["error", "errorEn", "code", "need"].includes(k)), [], JSON.stringify(sent.result));
   const failed = h.progress.filter((m) => m.type === "ffmpeg-progress" && m.phase === "failed");
   // once anything was said (queued), how it ended is said once, with the same code
   if (h.progress.some((m) => m.phase === "queued")) { assert.equal(failed.length, 1, "one failed progress message"); assert.equal(failed[0].code, code); }
@@ -146,7 +159,7 @@ test("fallback: any path-shaped words in a code are never handed on as the code"
   for (const code of [WIN_HOME, POSIX_HOME, "EPERM", "ENOENT", "NO_ARCHIVE", "NO_PINNED_BYTES", "constructor", "__proto__"]) {
     const e = nodeError(code, "failed: " + POSIX_HOME);
     const r = await expectSafe(host({ install: () => rpcError(e) }), "INSTALL_FAILED");
-    assert.equal(r.error, JJ.INSTALL_FAILED);
+    assert.equal(r.error, JJ.INSTALL_FAILED.zh);
   }
 });
 
@@ -158,6 +171,19 @@ test("codes the banner and retry rely on stay, each with a fixed sentence and no
   }
   const unsupported = await expectSafe(host({ spec: () => ({ ok: true, result: { supported: false, platform: "linux-x64" } }) }), "UNSUPPORTED_PLATFORM");
   assert.ok(!unsupported.error.includes("linux-x64"));
+  await expectSafe(host({ download: async () => ({ ok: false, errorCode: "CANCELLED" }) }), "CANCELLED");
+  // a Cindy that cannot download for plugins
+  await expectSafe(host({ noDownloads: true }), "HOST_TOO_OLD");
+});
+
+test("every whitelisted code has JJ's sentence word for word, and nothing else is in the list", () => {
+  const ctx = { cindy: { onHostMessage() {} }, BroadcastChannel: class { postMessage() {} }, console, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL };
+  vm.runInNewContext(MAIN + "\n;globalThis.__E = FFMPEG_ERRORS;", ctx);
+  assert.deepEqual(Object.keys(ctx.__E).sort(), [...WHITELIST].sort());
+  for (const code of WHITELIST) {
+    assert.equal(ctx.__E[code].zh, JJ[code].zh, code + " zh");
+    assert.equal(ctx.__E[code].en, JJ[code].en === null ? undefined : JJ[code].en, code + " en");
+  }
 });
 
 test("the banner still reads DISK_FULL as 磁盘空间不够", () => {
