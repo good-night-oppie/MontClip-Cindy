@@ -1,7 +1,8 @@
 "use strict";
 /* Which FFmpeg encodes an MP4 (H.264) export, said plainly (europa, 2026-11-08). The FFmpeg MontClip downloads is an
-   LGPL build with no H.264 encoder of its own (--disable-libx264 --disable-libopenh264); on a computer without a
-   graphics card every MP4 is encoded by the user's own FFmpeg with libx264 — the one chosen in the settings file, or,
+   LGPL build with no software H.264 encoder (--disable-libx264 --disable-libopenh264), only graphics-card ones; on a
+   computer with no usable graphics-card encoder every MP4 is encoded by the user's own FFmpeg with libx264 — the one
+   chosen in the settings file, or,
    with engine efa1be7a and later, the first one on PATH. montclip_status said only ffmpeg:"downloaded", so an MP4
    made by /usr/bin/ffmpeg 5.1 looked like one made by the download. The status now names the program that will encode
    an MP4, and montclip_export says it when an export starts. */
@@ -193,4 +194,35 @@ test("the card's value column can wrap a path with no break in it (a Windows pat
   const card = statusCard({ ffmpeg: "downloaded", project: "p", asr: null, mp4: { encoder: "libx264", from: "settings", program: "~/scoop/apps/ffmpeg/current/bin/ffmpeg.exe", version: "7.1" } }, true);
   const values = card.match(/<span style="min-width:0;overflow-wrap:anywhere">/g) || [];
   assert.equal(values.length, 5, "every value: 项目, 剪辑器, 导出工具, MP4 导出, 听写");
+});
+
+/* DD on #46 (review 5817710337): the download has graphics-card H.264 encoders (h264_nvenc, h264_qsv, h264_amf, …); what
+   it lacks is a software one (libx264, openh264). DD's words, for the agent and in montclip_status's description. */
+const DD_NOT_DOWNLOAD = " — not the FFmpeg MontClip downloaded, which has no software H.264 encoder (libx264) and no usable graphics-card encoder here.";
+const DD_NONE = "(the FFmpeg MontClip downloaded has no software H.264 encoder, and no graphics-card encoder or own FFmpeg with libx264 was found)";
+const DD_GHOST = "MontClip 下载的那份没有软件 H.264 编码器（只能用显卡编码），没有能用的显卡编码器时由这台电脑自己的 FFmpeg 编码";
+const GHOST = JSON.parse(fs.readFileSync(path.join(ROOT, "ghost.json"), "utf8"));
+
+test("the download lacks a software H.264 encoder, not every one: DD's words for the agent and the tool description", () => {
+  const { mp4Note } = load();
+  for (const from of ["settings", "env", "path", "own"])
+    assert.ok(mp4Note({ encoder: "libx264", from }).includes(DD_NOT_DOWNLOAD), from);
+  assert.ok(mp4Note({ encoder: null, from: "none" }).includes(DD_NONE), "none");
+  const status = GHOST.tools.find((t) => t.name === "montclip_status");
+  assert.ok(status.description.includes(DD_GHOST), "montclip_status's description");
+});
+
+test("no text an agent reads says the downloaded FFmpeg has no H.264 encoder without saying software", () => {
+  const { mp4Note } = load();
+  const texts = [null, { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1" }, { encoder: "libx264", from: "settings" },
+    { encoder: "libx264", from: "env" }, { encoder: "libx264", from: "path" }, { encoder: "libx264", from: "own" },
+    { encoder: "h264_nvenc", from: "bundled" }, { encoder: null, from: "none" }].map((h) => mp4Note(h))
+    .concat(GHOST.tools.map((t) => t.description));
+  for (const t of texts) {
+    // "this computer has no H.264 encoder" (none at all, from: none) is true; about the download it must say software
+    for (const m of t.matchAll(/\bno (software )?H\.264 encoder/g))
+      assert.ok(m[1] || t.slice(0, m.index).endsWith("this computer has "), t);
+    assert.doesNotMatch(t, /none of its own|H\.264 encoder of its own/, t);
+    assert.doesNotMatch(t, /没有 ?H\.264 ?编码器/, t);
+  }
 });
