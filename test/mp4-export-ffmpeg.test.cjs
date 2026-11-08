@@ -185,3 +185,12 @@ test("the agent gets only the program's file name; the full path (home folder as
     }
   }
 });
+
+test("the card's value column can wrap a path with no break in it (a Windows path: a backslash is no place to break)", () => {
+  // VV on #46: ~\tools\…\ffmpeg.exe had no place to break and pushed the card past 280 / 360 px; the real layout is
+  // measured in test/asr-card.test.cjs, this holds the style where no browser runs
+  const { statusCard } = load();
+  const card = statusCard({ ffmpeg: "downloaded", project: "p", asr: null, mp4: { encoder: "libx264", from: "settings", program: "~/scoop/apps/ffmpeg/current/bin/ffmpeg.exe", version: "7.1" } }, true);
+  const values = card.match(/<span style="min-width:0;overflow-wrap:anywhere">/g) || [];
+  assert.equal(values.length, 5, "every value: 项目, 剪辑器, 导出工具, MP4 导出, 听写");
+});

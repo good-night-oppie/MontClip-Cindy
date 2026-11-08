@@ -94,7 +94,11 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
   const cases = [["nothing installed", { engine: false, model: false, modelMb: 240 }], ["no model", { engine: true, model: false, modelMb: 240 }], ["installed", { engine: true, model: true, modelMb: 240 }], ["not known", null]];
   // the longest MP4 lines: a program and its version (europa, 2026-11-08), and JJ's path / own sentences (#46)
   const mp4s = [["settings", { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" }],
-    ["path", { encoder: "libx264", from: "path" }], ["own", { encoder: "libx264", from: "own" }]];
+    ["path", { encoder: "libx264", from: "path" }], ["own", { encoder: "libx264", from: "own" }],
+    // Windows paths (synthetic): a backslash is no place to break, so one ran past the card at 280 / 360 px (VV on #46)
+    ["windows-tools", { encoder: "libx264", from: "settings", program: "~\\tools\\ffmpeg\\bin\\ffmpeg.exe", version: "7.1-full_build-www.gyan.dev" }],
+    ["windows-program-files", { encoder: "libx264", from: "settings", program: "C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe", version: "7.1" }],
+    ["windows-scoop", { encoder: "libx264", from: "settings", program: "~\\scoop\\apps\\ffmpeg\\current\\bin\\ffmpeg.exe", version: "2024-11-03-git-df00705e00-full_build-www.gyan.dev" }]];
   for (const width of [280, 360]) for (const [mp4what, mp4] of mp4s) for (const [asrWhat, asr] of cases) {
     const what = asrWhat + ", MP4 from " + mp4what;
     const s = { ffmpeg: "missing", project: "演示任务的项目", asr, mp4 };
@@ -103,13 +107,14 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
     fs.writeFileSync(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;width:${width}px;font:13px system-ui,sans-serif">${card}` +
       `<script>const root=document.body.firstElementChild, rows=[...root.querySelectorAll('div[style*="display:flex"]')];` +
       `const btns=root.querySelectorAll('button'), btn=btns[btns.length-1], r=root.getBoundingClientRect(), b=btn?btn.getBoundingClientRect():null;` +
-      `document.body.setAttribute('data-m', JSON.stringify({values: rows.map(x=>x.children[1].getBoundingClientRect().left), labelLines: rows.map(x=>{const g=document.createRange();g.selectNodeContents(x.children[0]);return new Set([...g.getClientRects()].map(q=>Math.round(q.top))).size;}), bottomGap: b ? r.bottom-b.bottom : null, height: r.height}));</script></body>`);
+      `document.body.setAttribute('data-m', JSON.stringify({values: rows.map(x=>x.children[1].getBoundingClientRect().left), labelLines: rows.map(x=>{const g=document.createRange();g.selectNodeContents(x.children[0]);return new Set([...g.getClientRects()].map(q=>Math.round(q.top))).size;}), bottomGap: b ? r.bottom-b.bottom : null, height: r.height, scrollWidth: document.documentElement.scrollWidth}));</script></body>`);
     const out = execFileSync(BROWSER, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${path.join(dir, "profile")}`,
       `--window-size=${width},800`, "--dump-dom", "file:///" + page.replace(/\\/g, "/")], { encoding: "utf8", timeout: 60000 });
     const m = JSON.parse(/data-m="([^"]*)"/.exec(out)[1].replace(/&quot;/g, '"'));
     assert.equal(m.values.length, 5, what);   // 项目, 剪辑器, 导出工具, MP4 导出, 听写
     assert.ok(Math.max(...m.values) - Math.min(...m.values) < 1, `${width} px, ${what}: values start at ${m.values.map(Math.round)}`);
     assert.ok(m.labelLines.every((n) => n === 1), `${width} px, ${what}: every label on one line (lines: ${m.labelLines})`);
+    assert.ok(m.scrollWidth <= width, `${width} px, ${what}: the card is ${m.scrollWidth} px wide`);
     assert.ok(m.bottomGap >= 8, `${width} px, ${what}: the button is ${m.bottomGap} px from the bottom`);
     const est = ctx.statusCardHeight(s, false);
     assert.ok(est >= m.height - 4, `${width} px, ${what}: estimated ${est} px for a card ${Math.round(m.height)} px tall`);
