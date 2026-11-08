@@ -534,9 +534,10 @@ function statusCardHeight(s, editorOpen) {
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
   // the column, and wrapped at 280 px), so the values form one column; a line's small note and its button sit under its
-  // value, in that column
-  const row = (k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
-    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
+  // value, in that column. A value with no place to break (a Windows path: \ is not one) wraps anywhere instead of
+  // pushing the card past a narrow chat (VV on #46)
+  const row =(k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span style="min-width:0;overflow-wrap:anywhere">' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
     (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
