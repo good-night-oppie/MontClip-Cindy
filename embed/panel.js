@@ -12,9 +12,9 @@
   let project = { clips: [], media: [] }, list = [], editor = null, editorSeen = 0, now = -1;
   /* Without a task ticket this page does not know whose task it belongs to (in Cindy the panel is a global tab
      with no session in its address), so it must not read the engine's currently open project, show lines or seek:
-     that is how one task's lines used to appear in another task (MontClip-Cindy#48). The one prompt below is a
-     placeholder until JJ finalises the words. */
-  const NO_TASK_TEXT = '这个面板现在分不清你打开的是哪个任务，所以先不显示文稿。打开这个任务的剪辑器后，再回到这里看。'; // 待 JJ 定稿
+     that is how one task's lines used to appear in another task (MontClip-Cindy#48). The one prompt below is JJ's
+     (#48 issuecomment-6728640338 ①). */
+  const NO_TASK_TEXT = '这里还没有对上哪个任务。请在要剪的任务里打开 MontClip 剪辑器，文稿就会显示在这里。';
   const linesEmptyText = $("linesEmpty").textContent, propsEmptyText = $("propsEmpty").textContent;
   function showNoTask() {
     project = { clips: [], media: [] }; list = []; editor = null;

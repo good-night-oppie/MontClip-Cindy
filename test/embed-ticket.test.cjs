@@ -32,6 +32,9 @@ test("source: the ticket flow is wired and the session id is out of the frame ad
   assert.match(panel, /channelReady/, "the panel knows whether it holds a task channel");
   assert.match(panel, /if \(!channelReady\) \{ showNoTask\(\); return; \}/, "without a channel the panel never reads /api/project");
   assert.match(panel, /showNoTask\(\);\r?\n  load\(\);/, "the panel starts fail-closed, before any ticket answer");
+  // JJ's words for a panel that knows no task (#48 issuecomment-6728640338 ①), word for word
+  assert.ok(panel.includes("const NO_TASK_TEXT = '这里还没有对上哪个任务。请在要剪的任务里打开 MontClip 剪辑器，文稿就会显示在这里。';"), "JJ's sentence");
+  assert.doesNotMatch(panel, /待 JJ 定稿/);
 });
 
 test("packed worker: tickets are 64-hex, 60 s, fresh per ask; channel trade is one-time; unbound UI is 409", { timeout: 60000 }, async (t) => {
