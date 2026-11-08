@@ -93,7 +93,8 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
   t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
   const cases = [["nothing installed", { engine: false, model: false, modelMb: 240 }], ["no model", { engine: true, model: false, modelMb: 240 }], ["installed", { engine: true, model: true, modelMb: 240 }], ["not known", null]];
   for (const width of [280, 360]) for (const [what, asr] of cases) {
-    const s = { ffmpeg: "missing", project: "演示任务的项目", asr };
+    // the longest MP4 line: a program and its version (europa, 2026-11-08)
+    const s = { ffmpeg: "missing", project: "演示任务的项目", asr, mp4: { encoder: "libx264", from: "settings", program: "/usr/bin/ffmpeg", version: "5.1.9-0+deb12u1" } };
     const card = ctx.statusCard(s, false);
     const page = path.join(dir, `card-${width}-${cases.findIndex((c) => c[0] === what)}.html`);
     fs.writeFileSync(page, `<!doctype html><meta charset="utf-8"><body style="margin:0;width:${width}px;font:13px system-ui,sans-serif">${card}` +
@@ -103,7 +104,7 @@ test("at 280 px and 360 px every value starts in one column, and the button keep
     const out = execFileSync(BROWSER, ["--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${path.join(dir, "profile")}`,
       `--window-size=${width},800`, "--dump-dom", "file:///" + page.replace(/\\/g, "/")], { encoding: "utf8", timeout: 60000 });
     const m = JSON.parse(/data-m="([^"]*)"/.exec(out)[1].replace(/&quot;/g, '"'));
-    assert.equal(m.values.length, 4, what);
+    assert.equal(m.values.length, 5, what);   // 项目, 剪辑器, 导出工具, MP4 导出, 听写
     assert.ok(Math.max(...m.values) - Math.min(...m.values) < 1, `${width} px, ${what}: values start at ${m.values.map(Math.round)}`);
     assert.ok(m.labelLines.every((n) => n === 1), `${width} px, ${what}: every label on one line (lines: ${m.labelLines})`);
     assert.ok(m.bottomGap >= 8, `${width} px, ${what}: the button is ${m.bottomGap} px from the bottom`);

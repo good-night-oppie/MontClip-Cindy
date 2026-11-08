@@ -468,16 +468,49 @@ function asrLine(a, lang) {
 }
 /** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
+/* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no H.264 encoder of its own,
+   so without a graphics card the user's own FFmpeg encodes every MP4 — the 导出工具 line alone hid that (europa,
+   2026-11-08). */
+function mp4Line(h) {
+  if (!h) return '现在查不到';
+  if (h.from === 'none') return '这台电脑导不了 MP4';
+  if (h.from === 'bundled') return '用 MontClip 下载的 ffmpeg';
+  const which = h.from === 'settings' ? (h.program ? '这台电脑上的 ' + h.program + (h.version ? '（' + h.version + '）' : '') : '设置里选的 ffmpeg')
+    : h.from === 'path' ? '系统里找到的 ffmpeg' : h.from === 'env' ? '启动时指定的 ffmpeg' : '这台电脑上的 ffmpeg';
+  return '用' + which + '，不是 MontClip 下载的那份';
+}
+/** The same for an agent, in montclip_status and when montclip_export starts. */
+function mp4Note(h) {
+  if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
+  if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has none of its own, and no graphics-card encoder or own FFmpeg with libx264 was found).';
+  if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
+  const which = h.from === 'settings' ? (h.program ? h.program + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
+    : h.from === 'path' ? 'the first FFmpeg with libx264 on PATH' : h.from === 'env' ? 'the FFmpeg named in MONTCLIP_EXTERNAL_FFMPEG' : "this computer's own FFmpeg";
+  return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no H.264 encoder of its own. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
+}
 /** The status card's values, in order (the card and its height estimate read the same list). */
 function statusRows(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
-  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
+  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, mp4Line(s.mp4), asrLine(s.asr)];
 }
 const NOTE_STYLE = 'font-size:12px;line-height:1.45;color:var(--text-secondary,#6b6b66);margin-top:2px';
 /** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
  *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
 function statusCardHeight(s, editorOpen) {
-  const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
+  // laid out the way the browser wraps it, 9 Chinese characters a line. A line may break before each Chinese character
+  // or space, but a run of Latin letters, digits and signs (a path, a version) moves as a whole, an opening bracket
+  // stays with what follows it and a closing one or a comma with what comes before — on the MP4 line (europa,
+  // 2026-11-08) /usr/bin/ffmpeg（ and 5.1.9-0+deb12u1），took a line each where an even spread counted fewer.
+  const W = (t) => [...t].reduce((m, c) => m + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0);
+  const lines = (v) => {
+    let n = 1, cur = 0;
+    for (const unit of String(v).match(/[（《“]*(?:[^\u2e80-\uffef\s]+|[\u2e80-\uffef]|\s)[）》”，。、：；！？]*/g) || []) {
+      const w = W(unit);
+      if (cur > 0 && cur + w > 9) { n++; cur = 0; if (/^\s+$/.test(unit)) continue; }
+      if (w > 9) { const extra = Math.ceil(w / 9) - 1; n += extra; cur = w - 9 * extra; } else cur += w;
+    }
+    return n;
+  };
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
@@ -494,7 +527,7 @@ function statusCard(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('MP4 导出', mp4Line(s.mp4)) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
     row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model)
       ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
@@ -582,8 +615,10 @@ const HANDLERS = {
     const open = !!(editor && editor.status === 200);
     let asr = null;
     try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
-    return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    const card = { ffmpeg: s.ffmpeg, project: bound && bound.name, asr, mp4 };
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard(card, open), height: statusCardHeight(card, open) });
+    return { engine: publicStart(s), mp4Export: Object.assign({}, mp4, { note: mp4Note(mp4) }), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
@@ -669,7 +704,10 @@ const HANDLERS = {
       const c = { phase: 'failed', stage: 'start', code: e.code, reason: e.message, again };
       sendCard(callId, c); return plainFailure(c);
     }
-    return exportView(followExport(job, { session, callId, folder, dir, again }));
+    const f = followExport(job, { session, callId, folder, dir, again });
+    // which FFmpeg encodes an MP4 here, as the export starts (the engine's job does not say which program it ran)
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    return Object.assign(exportView(f), { mp4Export: Object.assign({}, mp4, { note: mp4Note(mp4) }) });
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
