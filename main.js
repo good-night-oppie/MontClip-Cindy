@@ -425,7 +425,9 @@ function exportCard(c, lang) {
     : c.phase === 'copyFailed' ? '<p style="margin:0">' + esc(copyFailureText(c, lang)) + '</p>'
     // 导出没有完成: why, in plain words; 你的剪辑都还在，没有丢。 — never the raw error (JJ v2)
     : c.phase === 'failed' ? (c.code === 'DATA_DIR_IN_USE' ? '<p style="margin:8px 0 0">' + esc(c.reason) + '</p>'
-      : '<p style="margin:8px 0 0">' + t.failedWhy[failedReason(c)] + t.kept + '</p>' +
+      // EXPORT_AUDIO_FAILED: the engine's sentence, as plainFailure gives the agent (MontClip#229 C2)
+      : '<p style="margin:8px 0 0">' + (c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim()
+        ? esc(String(c.reason).trim()) : t.failedWhy[failedReason(c)] + t.kept) + '</p>' +
         (c.installFailed ? '<p style="' + small + '">' + t.installFailed + '</p>' : '') +
         buttons([failedReason(c) === 'tool' ? ['install-ffmpeg', t.install, true] : ['retry', t.retry, true]]
           .concat(hasRaw(c) ? [['copy-problem', t.copyProblem, false]] : [])) +

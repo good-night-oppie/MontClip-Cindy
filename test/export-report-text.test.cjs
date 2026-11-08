@@ -11,7 +11,7 @@ function load() {
   const cindy = { onHostMessage: () => { }, send: async () => ({ ok: true }), node: { request: async () => ({ ok: false }) } };
   class BroadcastChannel { constructor() { this.onmessage = null; } postMessage() { } }
   const ctx = { cindy, BroadcastChannel, console: { warn() { }, log() { }, error() { } }, setTimeout, clearTimeout, setInterval, clearInterval, Date, Promise, JSON, Math, URL };
-  vm.runInNewContext(MAIN + "\n;this.plainFailure = plainFailure; this.exportReportText = exportReportText;", ctx);
+  vm.runInNewContext(MAIN + "\n;this.plainFailure = plainFailure; this.exportReportText = exportReportText; this.exportCard = exportCard;", ctx);
   return ctx;
 }
 
@@ -24,6 +24,17 @@ test("EXPORT_AUDIO_FAILED: the card says the engine's sentence, not the generic 
   // no engine sentence to say: the generic fallback stays
   const bare = plainFailure({ phase: "failed", stage: "job", code: "EXPORT_AUDIO_FAILED", reason: "" });
   assert.match(bare.error, /没预料到的问题/);
+});
+
+test("EXPORT_AUDIO_FAILED: the 导出没有完成 card the streamer sees says it too (MontClip#229 C2, real run 6728853323)", () => {
+  const { exportCard } = load();
+  const engine = "第 3 段（时间线 1:12 处）的声音没读出来，这次导出已停下，没有生成文件。原片没有改动。";
+  const card = exportCard({ phase: "failed", stage: "job", code: "EXPORT_AUDIO_FAILED", reason: engine }, "zh");
+  assert.ok(card.includes(engine), card);
+  assert.doesNotMatch(card, /没预料到的问题/);
+  assert.match(card, /data-ghost-action="retry"/, "it can still be retried");
+  // no engine sentence: the generic words stay, as in the agent's answer
+  assert.match(exportCard({ phase: "failed", stage: "job", code: "EXPORT_AUDIO_FAILED", reason: "" }, "zh"), /没预料到的问题/);
 });
 
 test("EXPORT_CLIP_SILENT in a report: JJ's sentence by number and time, or by time only", () => {
