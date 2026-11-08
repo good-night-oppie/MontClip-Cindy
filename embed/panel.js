@@ -1,13 +1,67 @@
 /* The side panel inside Cindy (framed by the plugin's panel.html; same origin as the editor). 文稿 lists the timeline's
    lines and follows the playhead; a click moves the editor there. 属性 shows the selected clip. The editor tab talks to
-   this page over BroadcastChannel("montclip-editor") (app.js startHostChannel); with no editor tab heard from, a click
-   falls back to POST /api/ui/command, which answers NO_EDITOR when none is open. */
+   this page over a BroadcastChannel whose name carries this task's own suffix (app.js startHostChannel after the
+   editor's claim, MontClip#215 E3): the panel trades the one-time task ticket in its first address for that suffix
+   (POST /api/embed/channel), and with no channel — or no editor heard on it lately — a click only says the editor is
+   not open. It never falls back to an unscoped UI command, which would move every task's editor at once. */
 (function () {
   "use strict";
   const M = window.MontClipPanelModel;
   const $ = (id) => document.getElementById(id);
-  const ch = typeof BroadcastChannel === "function" ? new BroadcastChannel("montclip-editor") : null;
+  let ch = null;
   let project = { clips: [], media: [] }, list = [], editor = null, editorSeen = 0, now = -1;
+
+  /* The framing page's origin (the browser's ancestorOrigins, else the referrer's): the only origin whose
+     montclip-host-ticket answers this page takes. */
+  const parentOrigin = (() => {
+    try { if (location.ancestorOrigins && location.ancestorOrigins.length) return location.ancestorOrigins[0]; } catch (e) { }
+    try { if (document.referrer) return new URL(document.referrer).origin; } catch (e) { }
+    return null;
+  })();
+  function onEditorState(e) {
+    const m = e.data || {};
+    if (m.type !== "editor-state") return;
+    const selChanged = !editor || editor.selId !== m.selId, revChanged = !!editor && editor.revision !== m.revision;
+    editor = m; editorSeen = Date.now();
+    $("offline").hidden = true;
+    if (revChanged) load(); else { follow(); if (selChanged) renderProps(); }
+  }
+  /* Trade a one-time task ticket for this task's channel suffix and listen on it; anything refused (used,
+     expired, another engine's) leaves the panel channel-less, on purpose. */
+  async function openChannel(ticket) {
+    if (!ticket || typeof BroadcastChannel !== "function") return false;
+    try {
+      const r = await fetch("/api/embed/channel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ticket }) });
+      if (!r.ok) return false;
+      const body = await r.json();
+      if (!body || !body.channel) return false;
+      if (ch) { try { ch.close(); } catch (e) { } }
+      ch = new BroadcastChannel("montclip-editor:" + body.channel);
+      ch.onmessage = onEditorState;
+      ch.postMessage({ type: "hello" });
+      return true;
+    } catch (e) { return false; }
+  }
+  function askParentForTicket() {
+    if (!parentOrigin || window.parent === window) return;
+    try { window.parent.postMessage({ type: "montclip-need-ticket" }, parentOrigin); } catch (e) { }
+  }
+  window.addEventListener("message", (e) => {
+    if (e.source !== window.parent || !parentOrigin || e.origin !== parentOrigin) return;
+    const m = e.data || {};
+    if (m.type === "montclip-host-ticket" && /^[a-f0-9]{64}$/.test(m.ticket || "")) openChannel(m.ticket);
+  });
+  /* The first address carries the ticket once; take it out of the address, then trade it. No ticket (or a
+     refused one) asks the framing page for a fresh one, the same rule as the editor's reconnect. */
+  const firstTicket = (() => {
+    const t = new URLSearchParams(location.search).get("ticket");
+    if (t) {
+      const q = new URLSearchParams(location.search); q.delete("ticket");
+      try { history.replaceState(history.state, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash); } catch (e) { }
+    }
+    return /^[a-f0-9]{64}$/.test(t || "") ? t : null;
+  })();
+  (async () => { if (!(await openChannel(firstTicket))) askParentForTicket(); })();
 
   /* tabs: arrow keys move between them, as a tablist should */
   const tabs = [$("tabLines"), $("tabProps")], pages = [$("pageLines"), $("pageProps")];
@@ -85,8 +139,7 @@
   }
   function seek(t) {
     if (ch && Date.now() - editorSeen < 3000) { ch.postMessage({ type: "seek", t }); return; }
-    fetch("/api/ui/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cmd: "seek", t }) })
-      .then((r) => { $("offline").hidden = r.ok; }).catch(() => { $("offline").hidden = false; });
+    $("offline").hidden = false;
   }
 
   async function load() {
@@ -97,18 +150,9 @@
       renderLines(); renderProps();
     } catch (e) { /* the engine is restarting: the next change event reloads */ }
   }
-  if (ch) ch.onmessage = (e) => {
-    const m = e.data || {};
-    if (m.type !== "editor-state") return;
-    const selChanged = !editor || editor.selId !== m.selId, revChanged = !!editor && editor.revision !== m.revision;
-    editor = m; editorSeen = Date.now();
-    $("offline").hidden = true;
-    if (revChanged) load(); else { follow(); if (selChanged) renderProps(); }
-  };
   /* No timeout on the editor's state: a background tab's timers are slowed (VV, #114: the highlight went after 3 s),
      so silence is not the editor going away. The last highlight and selection stay until the editor says otherwise;
-     a click still checks (seek: the channel when it was heard from lately, else /api/ui/command). */
+     a click still checks how lately the channel was heard from. */
   new EventSource("/api/events").addEventListener("change", load);
-  if (ch) ch.postMessage({ type: "hello" });
   load();
 })();

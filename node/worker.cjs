@@ -334,6 +334,18 @@ const METHODS = {
     note({ event: "bind", ...out });
     return out;
   },
+  /* A one-time task ticket for this task's editor frame or side panel (MontClip#251 item 1, #260 item 1): the
+     worker registers it with the engine under its own session header; the page trades it exactly once (the
+     editor for its task binding, the panel for its BroadcastChannel suffix). The ticket itself is never
+     written to note() or any other log. */
+  async "montclip/editor-ticket"(p) {
+    await start();
+    const session = String(p.session || "");
+    const b = await binder.bind(session);
+    const r = await api("POST", "/api/embed/ticket", { project: b.project, session });
+    if (r.status !== 200 || !r.body || !r.body.ticket) throw Object.assign(new Error((r.body && r.body.error) || "the engine refused a task ticket"), { code: (r.body && r.body.code) || "TASK_TICKET_REFUSED" });
+    return { ticket: r.body.ticket, expiresInMs: r.body.expiresInMs };
+  },
 };
 
 // Bind and operate in one queue: async readline listeners otherwise interleave at every await.
@@ -352,7 +364,7 @@ function dispatch(method, params) {
     }
     return METHODS[method](p);
   };
-  if (!['montclip/bind', 'montclip/call', 'montclip/ui', 'montclip/export-start'].includes(method)) return run();
+  if (!['montclip/bind', 'montclip/call', 'montclip/ui', 'montclip/export-start', 'montclip/editor-ticket'].includes(method)) return run();
   const result = taskOperations.then(run);
   taskOperations = result.catch(() => {});
   return result;

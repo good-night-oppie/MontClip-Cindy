@@ -789,6 +789,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
+    else if (m.type === 'editor-ticket') a = await node('montclip/editor-ticket', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)

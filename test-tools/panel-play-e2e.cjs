@@ -35,10 +35,14 @@ async function cdp(wsUrl) {
 (async () => {
   const out = { encoder: enc };
   const s = (await rpc("montclip/start")).result;
+  // the task this run stands for (#251/#260): bind it, then a fresh one-time ticket for each framed page
+  await rpc("montclip/bind", { session: "panel-play-e2e" });
+  const ticketFor = async () => (await rpc("montclip/editor-ticket", { session: "panel-play-e2e" })).result.ticket;
+  const editorUrl = s.url + "&ticket=" + await ticketFor();
   const prof = fs.mkdtempSync(path.join(os.tmpdir(), "mc-edge-")), port = 9000 + Math.floor(Math.random() * 500);
-  const b = spawn(require(path.join(ROOT, "engine", "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", s.url], { stdio: "ignore" });
+  const b = spawn(require(path.join(ROOT, "engine", "export-jobs.js")).findBrowser(), ["--headless=new", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", `--user-data-dir=${prof}`, `--remote-debugging-port=${port}`, "--window-size=1300,900", editorUrl], { stdio: "ignore" });
   await sleep(5000);
-  const u = new URL(s.url); u.pathname = "/cindy/panel.html"; u.searchParams.delete("token"); u.searchParams.set("theme", "light");
+  const u = new URL(s.url); u.pathname = "/cindy/panel.html"; u.searchParams.delete("token"); u.searchParams.set("theme", "light"); u.searchParams.set("ticket", await ticketFor());
   const tab = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(u.href)}`, { method: "PUT" })).json();
   await sleep(3000);
   const editorTab = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((t) => t.type === "page" && t.url.includes("host=cindy") && !t.url.includes("/cindy/"));
@@ -50,7 +54,8 @@ async function cdp(wsUrl) {
   await panel.eval(`window.postMessage({ type: "montclip-host-theme", scheme: "light" }, "*")`); await sleep(300);
   out.theme.afterLight = await panel.eval(`[document.documentElement.dataset.hostTheme, getComputedStyle(document.body).backgroundColor]`);
   // (1) play from 0 and sample: the editor's time and the panel's highlighted line, every 1.5 s
-  out.debug = { panelSaw: await panel.eval(`new Promise(r => { const c = new BroadcastChannel("montclip-editor"); let got = null; c.onmessage = (e) => { got = e.data; }; c.postMessage({ type: "hello" }); setTimeout(() => r(got), 800); })`), lines: await panel.eval(`document.querySelectorAll('#lines li').length`), embedded: await editor.eval(`[typeof MontClipHost !== "undefined" && MontClipHost.embedded, !!runtime.hostChannel, location.search, typeof togglePlay]`),
+  const debugChannel = await fetch(s.origin + "/api/embed/channel", { method: "POST", headers: { "Content-Type": "application/json", "X-MontClip-Session": new URL(s.url).searchParams.get("token") }, body: JSON.stringify({ ticket: await ticketFor() }) }).then(r => r.json()).then(x => x.channel || "").catch(() => "");
+  out.debug = { panelSaw: await panel.eval(`new Promise(r => { const c = new BroadcastChannel("montclip-editor:" + "${debugChannel}"); let got = null; c.onmessage = (e) => { got = e.data; }; c.postMessage({ type: "hello" }); setTimeout(() => r(got), 800); })`), lines: await panel.eval(`document.querySelectorAll('#lines li').length`), embedded: await editor.eval(`[typeof MontClipHost !== "undefined" && MontClipHost.embedded, !!runtime.hostChannel, location.search, typeof togglePlay]`),
     media: await editor.eval(`[...document.querySelectorAll("video")].map(v => [v.readyState, v.error && v.error.code, v.src.slice(-30)])`) };
   await editor.send("Page.bringToFront");   // the editor plays in the front tab; the panel keeps listening behind it
   await editor.eval(`setTime(0); play()`);
