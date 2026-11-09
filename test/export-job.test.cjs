@@ -68,8 +68,22 @@ test("montclip_export answers with the job while the export is still running", {
   assert.equal(r.result.job, "x_job1", JSON.stringify(r.result));
   assert.equal(r.result.status, "running");
   assert.match(r.result.hint, /montclip_export \{job:"x_job1"\}/);
+  // the owner (MontClip-Cindy#53, 2026-11-09): nothing may promise the export carries on if she switches away — in
+  // Cindy it is drawn in this task's editor tab; whether it stops if she switches away is not verified (#53)
+  assert.doesNotMatch(r.result.hint, /in the background|switch|other task/i);
+  assert.match(r.result.hint, /editor tab/);
+  assert.match(r.result.hint, /do not tell the streamer/i);
+  // JJ on #55 (issuecomment-6732707938): one plain line the AI can say to her as it is
+  assert.ok(r.result.hint.includes("导出要在这个任务的 MontClip 剪辑器页签里做完，请先别关掉它；切走的话我没法保证不会中断。"));
   // the card keeps showing it: still 'working' after the result
   await h.until(() => h.cards.some((c) => c.callId === "c1" && c.state === "working" && /正在导出 10%/.test(c.html)), "a progress card");
+});
+
+test("the montclip_export description promises nothing about the background (MontClip-Cindy#53)", () => {
+  const g = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "ghost.json"), "utf8"));
+  const d = g.tools.find((x) => x.name === "montclip_export").description;
+  assert.doesNotMatch(d, /后台|background/i);
+  assert.match(d, /不要跟主播说切走也不会断/);
 });
 
 test("{job} is not done until the engine has finished the file and it is copied into the folder", { timeout: 10000 }, async (t) => {
