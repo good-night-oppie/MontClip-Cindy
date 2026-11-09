@@ -185,8 +185,10 @@ const METHODS = {
     const s = await start();
     const name = String(p.name || "");
     if (!s.tools.some((t) => t.name === name)) throw Object.assign(new Error("no such MontClip tool: " + name), { code: -32602 });
+    if (p.arguments?.wait_ms != null && !s.tools.find(t => t.name === name)?.inputSchema?.properties?.wait_ms)
+      throw Object.assign(new Error('This pinned engine does not support durable bounded tasks yet. Integrate the reviewed MC-04/08/12 engine fix before using this candidate.'), { code: 'ENGINE_TASK_PROTOCOL_REQUIRED' });
     const t0 = Date.now();
-    const out = await s.callTool(name, p.arguments && typeof p.arguments === "object" ? p.arguments : {});
+    const out = await s.callTool(name, p.arguments && typeof p.arguments === "object" ? p.arguments : {}, { session: p.session, project: p.project });
     note({ event: "tool", name, ms: Date.now() - t0 });
     return flatten(out, path.join(DATA, "frames"));
   },
@@ -375,6 +377,8 @@ const METHODS = {
 // Bind and operate in one queue: async readline listeners otherwise interleave at every await.
 let taskOperations = Promise.resolve();
 function dispatch(method, params) {
+  const long = method === 'montclip/call' && ['fablecut_transcribe', 'fablecut_captions', 'fablecut_songs', 'fablecut_highlights'].includes(params.name);
+  let project;
   const run = async () => {
     const p = { ...params };
     if (p.session && ['montclip/call', 'montclip/ui', 'montclip/export-start'].includes(method)) {
@@ -386,12 +390,22 @@ function dispatch(method, params) {
       }
       p.project = (await binder.bind(p.session)).project;
     }
+    project = p.project;
+    if (long) p.arguments = { ...p.arguments, wait_ms: 0 };
     return METHODS[method](p);
   };
   if (!['montclip/bind', 'montclip/call', 'montclip/ui', 'montclip/export-start', 'montclip/editor-ticket'].includes(method)) return run();
   const result = taskOperations.then(run);
   taskOperations = result.catch(() => {});
-  return result;
+  if (!long) return result;
+  // Only submission/binding holds the queue. Waiting for this same task happens outside it.
+  return result.then(async out => {
+    const receipt = JSON.parse(out.text);
+    if (receipt.status !== 'running') return out;
+    const wait_ms = params.arguments?.wait_ms ?? 6000;
+    if (wait_ms === 0) return out;
+    return METHODS[method]({ ...params, project, arguments: { taskId: receipt.taskId, wait_ms } });
+  });
 }
 
 /* Leaving (Cindy closed our stdin, or ffmpeg was just installed): the engine's own shutdown runs first — it stops the
