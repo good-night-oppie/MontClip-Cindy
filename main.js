@@ -67,22 +67,59 @@ let installing = null, lastDownloadPhase = null;
 const CHECK_FAILED = ["SIZE_MISMATCH", "SHA256_MISMATCH", "BAD_ARCHIVE"];
 let checkFailures = 0, retryStamp = "";
 const downloadId = (platform) => "ffmpeg-" + platform + (checkFailures ? "-r" + checkFailures + "-" + retryStamp : "");
+/* Only fixed codes and fixed sentences reach the agent or an ffmpeg-progress message (MontClip-Cindy#41, JJ's spec
+   6717056123): the host's download message, the worker's error and Node's own errors (EPERM, ENOENT … with the full
+   path) never do. Any other code is INSTALL_FAILED. JJ's final words, zh and en (#41 6717056123,
+   #45 6717292486 and 6718419281). */
+const FFMPEG_CHECK_FAILED = {
+  zh: '下载下来的文件和预期的不一致，为了安全没有安装。请再下载一次；还不行，点「复制问题信息」发给我们。',
+  en: 'The downloaded file doesn\'t match what was expected, so it wasn\'t installed, to be safe. Download it again; if it still doesn\'t work, use "Copy problem details" and send it to us.',
+};
+const FFMPEG_ERRORS = Object.freeze({
+  DOWNLOAD_FAILED: { zh: 'FFmpeg 没有下载成功，请检查网络后再试一次；还不行，点「复制问题信息」发给我们。',
+    en: 'FFmpeg couldn\'t be downloaded. Check your network and try again; if it still doesn\'t work, use "Copy problem details" and send it to us.' },
+  DISK_FULL: { zh: '磁盘空间不够，清理一些空间后再试一次。',
+    en: 'There isn\'t enough disk space. Free up some space and try again.' },
+  INSTALL_FAILED: { zh: 'FFmpeg 没有装成功，可能是文件被占用或被杀毒软件拦住了。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。',
+    en: 'FFmpeg wasn\'t installed. A file may be in use, or antivirus software may have blocked it. Close any related programs and try again; if it still doesn\'t work, use "Copy problem details" and send it to us.' },
+  CANCELLED: { zh: '你取消了下载，没有安装。需要的话，可以再点一次下载。',
+    en: 'The download was cancelled and nothing was installed. If you need it, you can start the download again.' },
+  SIZE_MISMATCH: FFMPEG_CHECK_FAILED,
+  SHA256_MISMATCH: FFMPEG_CHECK_FAILED,
+  BAD_ARCHIVE: FFMPEG_CHECK_FAILED,
+  UNPACK_FAILED: { zh: '下载好了，但解压没成功，没有安装。关掉相关程序后再试一次；还不行，点「复制问题信息」发给我们。',
+    en: 'The download finished, but unpacking didn\'t work, so nothing was installed. Close any related programs and try again; if it still doesn\'t work, use "Copy problem details" and send it to us.' },
+  UNSUPPORTED_PLATFORM: { zh: '这台电脑的系统暂时没有可以直接下载的 FFmpeg，这里没法帮你装好。点「复制问题信息」发给我们。',
+    en: 'This computer\'s system doesn\'t have an FFmpeg we can download directly, so we can\'t install it for you here. Use "Copy problem details" and send it to us.' },
+  HOST_TOO_OLD: { zh: '你的 Cindy 版本太旧，装不了 FFmpeg。先把 Cindy 更新到最新，再回来点下载。',
+    en: 'Your Cindy is too old to install FFmpeg. Update Cindy to the latest version, then come back and click download.' },
+});
+const FFMPEG_CODE_ALIASES = { ENOSPC: 'DISK_FULL', EDQUOT: 'DISK_FULL' };
+function ffmpegSafeFailure(code, need) {
+  const c = typeof code === 'string' && Object.prototype.hasOwnProperty.call(FFMPEG_CODE_ALIASES, code) ? FFMPEG_CODE_ALIASES[code] : code;
+  const safe = typeof c === 'string' && Object.prototype.hasOwnProperty.call(FFMPEG_ERRORS, c) ? c : 'INSTALL_FAILED';
+  const t = FFMPEG_ERRORS[safe];
+  return { error: t.zh, ...(t.en ? { errorEn: t.en } : {}), code: safe, ...(safe === 'DISK_FULL' && Number.isFinite(need) && need > 0 ? { need } : {}) };
+}
 function installFfmpeg() {
   if (installing) return installing;
+  let said = false;
   installing = (async () => {
     const spec = await node('montclip/ffmpeg-spec');
-    if (!spec.supported) return { error: 'MontClip has no pinned ffmpeg for ' + spec.platform, code: 'UNSUPPORTED_PLATFORM' };
+    if (!spec.supported) return ffmpegSafeFailure('UNSUPPORTED_PLATFORM');
     if (spec.state === 'downloaded') return { installed: true, already: true, version: spec.version };
     if (typeof cindy.downloads !== 'object' || typeof cindy.downloads.start !== 'function')
-      return { error: 'This Cindy cannot download files for plugins; update Cindy.', code: 'HOST_TOO_OLD' };
+      return ffmpegSafeFailure('HOST_TOO_OLD');
     channel.postMessage({ type: 'ffmpeg-progress', phase: 'queued' });
+    said = true;
     lastDownloadPhase = null;
     const d = await cindy.downloads.start({ id: downloadId(spec.platform), url: spec.url, sha256: spec.sha256, bytes: spec.bytes });
     if (!d.ok) {
       // Cindy reports a failed download without a code (downloadSlot.ts L309–316); its progress said whether it was cancelled
-      const code = d.errorCode || (lastDownloadPhase === 'cancelled' ? 'CANCELLED' : 'DOWNLOAD_FAILED');
-      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code, message: d.message || d.errorCode });
-      return { error: d.message || d.errorCode || 'download failed', code };
+      // the host's own message and an unknown host code are not handed on: it is a download that failed
+      const f = ffmpegSafeFailure(lastDownloadPhase === 'cancelled' ? 'CANCELLED' : Object.prototype.hasOwnProperty.call(FFMPEG_ERRORS, d.errorCode) ? d.errorCode : 'DOWNLOAD_FAILED');
+      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: f.code, message: f.error });
+      return f;
     }
     channel.postMessage({ type: 'ffmpeg-progress', phase: 'installing' });
     try {
@@ -91,10 +128,16 @@ function installFfmpeg() {
       return { download: { bytes: d.bytes, sha256: d.sha256, fromCache: d.fromCache }, install: out };
     } catch (e) {
       if (CHECK_FAILED.includes(e.code)) { checkFailures++; retryStamp = Date.now().toString(36); }
-      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: e.code || 'INSTALL_FAILED', need: e.need, message: String(e.message || e) });
-      return { error: String(e.message || e), code: e.code || 'INSTALL_FAILED', ...(e.need ? { need: e.need } : {}) };
+      const f = ffmpegSafeFailure(e && e.code, e && e.need);
+      channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: f.code, need: f.need, message: f.error });
+      return f;
     }
-  })().finally(() => { installing = null; });
+  })().catch((e) => {
+    // a throw nobody expected (the spec request, the host's download call): no raw words either
+    const f = ffmpegSafeFailure(e && e.code);
+    if (said) channel.postMessage({ type: 'ffmpeg-progress', phase: 'failed', code: f.code, message: f.error });
+    return f;
+  }).finally(() => { installing = null; });
   return installing;
 }
 /* On-device transcription (P8, Deja 2026-11-05): the speech engine, the VAD and the Paraformer model are downloaded the
@@ -349,9 +392,35 @@ function copyFailureText(c, lang) {
   const t = EXPORT_TEXT[lang === 'en' ? 'en' : 'zh'];
   return Object.hasOwn(t.why, c.code || '') ? t.copyFailed(t.why[c.code]) : t.failedWhy.other;
 }
+/* The export report's checks in the words the streamer reads (MontClip#229 C1, JJ's final sentences): a clip that
+   came out silent, and a clip whose source took too long to read back, are said here, not in the engine's English
+   check line. {n} counts pieces with a picture; a sound on its own is said by its time only (the -track sentence).
+   Times are m:ss on the timeline, as the engine's own exportCheckText formats them. */
+function fmtTimeline(t) { const s = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function clipSilentText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）是无声的，请确认是不是你想要的。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音是无声的，请确认是不是你想要的。';
+}
+function clipUncheckedText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）在成片里没有声音，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音在成片里是无声的，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。';
+}
+function exportReportText(report) {
+  if (!report) return '';
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  if (!checks.length) return report.line || '';
+  const text = (c) => c.code === 'EXPORT_CLIP_SILENT' ? clipSilentText(c) : c.code === 'EXPORT_CLIP_UNCHECKED' ? clipUncheckedText(c) : c.text || '';
+  // the summary (size, frames, loudness…) stays one line; each warning is a line of its own (VV, #48; real run 6730067542)
+  const all = checks.filter(Boolean);
+  const summary = all.filter((c) => c.ok !== false).map(text).filter(Boolean).join(' · ');
+  return [summary, ...all.filter((c) => c.ok === false).map(text).filter(Boolean)].filter(Boolean).join('\n');
+}
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
   const text = c.code === 'NO_JOB' ? '这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
+    /* EXPORT_AUDIO_FAILED: the engine's error is already JJ's sentence in the streamer's language (#231) — say
+       that, not the generic fallback (MontClip#229 C2). */
+    : c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim() ? String(c.reason).trim()
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -399,7 +468,9 @@ function exportCard(c, lang) {
     : c.phase === 'copyFailed' ? '<p style="margin:0">' + esc(copyFailureText(c, lang)) + '</p>'
     // 导出没有完成: why, in plain words; 你的剪辑都还在，没有丢。 — never the raw error (JJ v2)
     : c.phase === 'failed' ? (c.code === 'DATA_DIR_IN_USE' ? '<p style="margin:8px 0 0">' + esc(c.reason) + '</p>'
-      : '<p style="margin:8px 0 0">' + t.failedWhy[failedReason(c)] + t.kept + '</p>' +
+      // EXPORT_AUDIO_FAILED: the engine's sentence, as plainFailure gives the agent (MontClip#229 C2)
+      : '<p style="margin:8px 0 0">' + (c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim()
+        ? esc(String(c.reason).trim()) : t.failedWhy[failedReason(c)] + t.kept) + '</p>' +
         (c.installFailed ? '<p style="' + small + '">' + t.installFailed + '</p>' : '') +
         buttons([failedReason(c) === 'tool' ? ['install-ffmpeg', t.install, true] : ['retry', t.retry, true]]
           .concat(hasRaw(c) ? [['copy-problem', t.copyProblem, false]] : [])) +
@@ -414,20 +485,68 @@ function exportCard(c, lang) {
       (c.phase === 'copyFailed' && hasRaw(c) ? '<p style="' + small + ';margin-top:4px">' + t.copyProblemNote + '</p>' : '') +
       (c.openFailed ? '<p style="' + small + '">' + t.openFailed(esc(whyText(c.openFailed.code, c.openFailed.message, lang))) + '</p>' : '')
     : '';
-  const note = c.note ? '<p style="margin:8px 0 0;color:' + (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(c.note) + '</p>' : '';
+  // the report's summary on one line, then each warning on a line of its own (VV, #48 issuecomment-6729467270): two
+  // warnings joined with 「 · 」 read as one sentence; the summary's own items stay together (real run 6730067542)
+  const note = c.note ? String(c.note).split('\n').filter(Boolean).map((s) => '<p style="margin:8px 0 0;color:' +
+    (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(s) + '</p>').join('') : '';
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.45 system-ui,sans-serif">' +
     (head ? '<div style="font-weight:600' + (c.phase === 'failed' ? ';color:var(--text-danger,#b42318)' : '') + '">' + head + '</div>' : '') + bar + where + body +
     (files ? '<ul style="margin:8px 0 0;padding-left:18px">' + files + '</ul>' : '') + note + open + '</div>';
+}
+/** The export card's height for the host's first frame, from what it holds (VV, #48 issuecomment-6729467270: a fixed
+ *  210 px cut 〔打开文件夹〕 off a 导出完成 card with two warnings). Laid out at the narrowest chat, 280 px: 252 px of
+ *  text, 18 Chinese characters of 13 px a line (17 in the file list, 19 of the 12 px small print), other characters
+ *  about 0.6 of one; buttons that don't fit one row wrap. Rounded up: too tall leaves a gap, too short cuts a button. */
+function exportCardHeight(c) {
+  const html = exportCard(c, 'zh');
+  const strip = (s) => s.replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, 'x');
+  const lines = (s, chars) => Math.max(1, Math.ceil([...strip(s)].reduce((n, ch) => n + (/[\u2e80-\uffef]/.test(ch) ? 1 : 0.6), 0) / chars));
+  let h = 24 + 6;                                                   // padding, and a little room
+  if (/font-weight:600/.test(html)) h += 19;                        // the head
+  if (/height:4px/.test(html)) h += 14;                             // the progress bar
+  for (const [, style, inner] of html.matchAll(/<p( style="[^"]*")?>([\s\S]*?)<\/p>/g)) {
+    const small = /font-size:12px/.test(style || '');
+    h += (style ? 8 : 26) + lines(inner, small ? 19 : 18) * (small ? 18 : 19);   // a bare <p> keeps its 1 em margins
+  }
+  const ul = /<ul[^>]*>([\s\S]*?)<\/ul>/.exec(html);
+  if (ul) {
+    h += 8;
+    for (const [, li] of ul[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)) {
+      const i = li.indexOf('<div');
+      h += lines(i < 0 ? li : li.slice(0, i), 17) * 19 + (i < 0 ? 0 : 2 + lines(li.slice(i), 19) * 18);
+    }
+  }
+  for (const [, row] of html.matchAll(/<div style="margin-top:10px;display:flex[^"]*">([\s\S]*?)<\/div>/g)) {
+    let rows = 1, w = 0;
+    for (const [, label] of row.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)) {
+      const bw = [...strip(label)].length * 13 + 26;               // 13 px a character, 12 px padding each side
+      if (w && w + 8 + bw > 252) { rows++; w = bw; } else w += (w ? 8 : 0) + bw;
+    }
+    h += 10 + rows * 30 + (rows - 1) * 8;
+  }
+  return Math.min(900, Math.max(90, Math.ceil(h)));
 }
 /* Each export card's last state, by its call: 打开文件夹 knows which folder, and the card is drawn again after the click
    (Cindy holds the clicked button until the next card-update, at most 8 s: GHOST_CARD_ACTION_INFLIGHT_MS). */
 const exportCards = new Map();
 const pendingProblems = new Map();   // session → {text, problem}: what its task page is to show, from 复制问题信息 on a card
+/* Cindy takes one card-update per call a second (the host's GHOST_CARD_MIN_INTERVAL_MS, 1000) and drops a faster one
+   without saying so: a failure right after a progress update left 「正在导出 0%」 for good (MontClip#229 C2). So one
+   card's updates go out at least CARD_GAP_MS apart; one that comes too soon waits, and only the newest state is sent. */
+const CARD_GAP_MS = 1100;
+const cardCooling = new Set(), cardHeld = new Map();   // calls inside their gap · the newest state waiting to go
 function sendCard(callId, c) {
   exportCards.delete(callId); exportCards.set(callId, c);
   while (exportCards.size > 50) exportCards.delete(exportCards.keys().next().value);
+  if (cardCooling.has(callId)) { cardHeld.set(callId, c); return Promise.resolve({ ok: true, held: true }); }
+  // the gap is a timer, not a clock reading, so it is the same timer the rest of the follower runs on
+  cardCooling.add(callId);
+  setTimeout(() => {
+    cardCooling.delete(callId);
+    if (cardHeld.has(callId)) { const held = cardHeld.get(callId); cardHeld.delete(callId); sendCard(callId, held); }
+  }, CARD_GAP_MS);
   const done = ['done', 'failed', 'cancelled', 'still', 'copyFailed'].includes(c.phase);
-  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: c.phase === 'failed' ? 260 : c.phase === 'copyFailed' ? 240 : c.phase === 'done' ? 210 : done ? 150 : 110 });
+  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: exportCardHeight(c) });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -468,16 +587,65 @@ function asrLine(a, lang) {
 }
 /** The small line under an unfinished 听写 state, '' once installed (or when the state is not known). */
 function asrNote(a, lang) { return a && !(a.engine && a.model) ? asrText(lang).note : ''; }
+/* Which FFmpeg encodes an MP4 (H.264) export (node/lib.cjs h264Export). The download has no software H.264 encoder
+   (libx264), only graphics-card ones (DD on #46), so without a usable one the user's own FFmpeg encodes every MP4 —
+   the 导出工具 line alone hid that (europa, 2026-11-08). JJ's words (#46): only what is known — from PATH the engine
+   does not say which program, and none is guessed; the settings file named it, which is not the same as the user
+   choosing it. */
+function mp4Line(h) {
+  if (!h) return '现在查不到是哪个 ffmpeg';
+  if (h.from === 'none') return '现在导不了 MP4（没有找到能用的编码工具）';
+  if (h.from === 'bundled') return '用 MontClip 下载的 ffmpeg';
+  const which = h.from === 'settings' ? (h.program ? '设置文件里指定的 ' + h.program + (h.version ? '（版本 ' + h.version + '）' : '') : '设置文件里指定的 ffmpeg')
+    : h.from === 'path' ? '系统里找到的 ffmpeg（具体是哪一个，这里看不出来）' : h.from === 'env' ? '启动时指定的 ffmpeg'
+    : '这台电脑自己的 ffmpeg（具体是哪一个，这里看不出来）';
+  return '用' + which + '，不是 MontClip 下载的那份';
+}
+/** The program's file name only, for an agent: the folders it is in (the full path is on the card) stay here (QQ on #46). */
+const programName = (p) => String(p).split(/[\\/]/).pop();
+/** What an agent reads in montclip_status and when montclip_export starts: the card's facts with the program's name only,
+ *  and a program and version only for the one the settings file names (none is guessed for another source). */
+function mp4Export(h) {
+  const o = Object.assign({}, h, h && h.program ? { program: programName(h.program) } : {}, { note: mp4Note(h) });
+  if (!h || h.from !== 'settings') { delete o.program; delete o.version; }
+  return o;
+}
+/* JJ (#46): so an agent tells the streamer in plain words, not the version strings, variable names or folders below.
+   It names no source itself, so it can't contradict the fact before it (the old example did, for a bundled FFmpeg). */
+const MP4_PLAIN = 'When you tell the streamer, say it in plain words and only as far as the fact above goes; don\'t name any other source for the FFmpeg, and don\'t read out version strings, environment variable names or folder names.';
+/** The same in words for an agent. */
+function mp4Note(h) { return mp4Fact(h) + ' ' + MP4_PLAIN; }
+function mp4Fact(h) {
+  if (!h) return 'Which FFmpeg encodes an MP4 (H.264) export could not be checked right now.';
+  if (h.from === 'none') return 'MP4 (H.264) export: this computer has no H.264 encoder (the FFmpeg MontClip downloaded has no software H.264 encoder, and no graphics-card encoder or own FFmpeg with libx264 was found).';
+  if (h.from === 'bundled') return 'MP4 (H.264) exports are encoded by the FFmpeg MontClip downloaded (' + h.encoder + ').';
+  const which = h.from === 'settings' ? (h.program ? programName(h.program) + (h.version ? ' ' + h.version : '') + ', named in the settings file' : 'the FFmpeg named in the settings file')
+    : h.from === 'path' ? 'the first FFmpeg with libx264 on PATH' : h.from === 'env' ? 'the FFmpeg named in MONTCLIP_EXTERNAL_FFMPEG' : "this computer's own FFmpeg";
+  return 'MP4 (H.264) exports are encoded with libx264 by ' + which + ' — not the FFmpeg MontClip downloaded, which has no software H.264 encoder (libx264) and no usable graphics-card encoder here. ffmpeg:"downloaded" is only about that download (preview, probing, other formats).';
+}
 /** The status card's values, in order (the card and its height estimate read the same list). */
 function statusRows(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
-  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, asrLine(s.asr)];
+  return [s.project || '—', editorOpen ? '已在这个任务里打开' : '没有打开', ff, mp4Line(s.mp4), asrLine(s.asr)];
 }
 const NOTE_STYLE = 'font-size:12px;line-height:1.45;color:var(--text-secondary,#6b6b66);margin-top:2px';
 /** The card's height for the host's first frame (it then settles on the real one): padding, the title, each row by how
  *  many lines its value takes in the narrowest chat (280 px leaves ~118 px: 9 Chinese characters), and the button. */
 function statusCardHeight(s, editorOpen) {
-  const lines = (v) => Math.max(1, Math.ceil([...String(v)].reduce((n, c) => n + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0) / 9));
+  // laid out the way the browser wraps it, 9 Chinese characters a line. A line may break before each Chinese character
+  // or space, but a run of Latin letters, digits and signs (a path, a version) moves as a whole, an opening bracket
+  // stays with what follows it and a closing one or a comma with what comes before — on the MP4 line (europa,
+  // 2026-11-08) /usr/bin/ffmpeg（ and 5.1.9-0+deb12u1），took a line each where an even spread counted fewer.
+  const W = (t) => [...t].reduce((m, c) => m + (/[\u2e80-\uffef]/.test(c) ? 1 : 0.55), 0);
+  const lines = (v) => {
+    let n = 1, cur = 0;
+    for (const unit of String(v).match(/[（《“]*(?:[^\u2e80-\uffef\s]+|[\u2e80-\uffef]|\s)[）》”，。、：；！？]*/g) || []) {
+      const w = W(unit);
+      if (cur > 0 && cur + w > 9) { n++; cur = 0; if (/^\s+$/.test(unit)) continue; }
+      if (w > 9) { const extra = Math.ceil(w / 9) - 1; n += extra; cur = w - 9 * extra; } else cur += w;
+    }
+    return n;
+  };
   const rows = statusRows(s, editorOpen).reduce((n, v) => n + lines(v) * 20, 0);
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
@@ -487,14 +655,15 @@ function statusCardHeight(s, editorOpen) {
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
   // the column, and wrapped at 280 px), so the values form one column; a line's small note and its button sit under its
-  // value, in that column
-  const row = (k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
-    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span>' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
+  // value, in that column. A value with no place to break (a Windows path: \ is not one) wraps anywhere instead of
+  // pushing the card past a narrow chat (VV on #46)
+  const row =(k, v, { hint = '', note = '', extra = '' } = {}) => '<div style="display:flex;gap:10px"><span style="color:var(--text-secondary,#6b6b66);width:9.5em;flex:none;white-space:nowrap"' +
+    (hint ? ' title="' + esc(hint) + '"' : '') + '>' + esc(k) + '</span><span style="min-width:0;overflow-wrap:anywhere">' + esc(v) + (note ? '<div style="' + NOTE_STYLE + '">' + esc(note) + '</div>' : '') +
     (extra ? '<div style="margin-top:4px">' + extra + '</div>' : '') + '</span></div>';
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('MP4 导出', mp4Line(s.mp4)) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
     row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model)
       ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
@@ -545,7 +714,7 @@ async function runFollow(f, job) {
     return;
   }
   const outs = job.result && Array.isArray(job.result.outputs) ? job.result.outputs : [];
-  f.report = outs.map((o) => o.report && o.report.line).filter(Boolean);
+  f.report = outs.map((o) => exportReportText(o.report)).filter(Boolean);
   if (f.dir) {
     f.phase = 'copy';
     sendCard(f.callId, { phase: 'copy', folder: f.folder });
@@ -559,7 +728,7 @@ async function runFollow(f, job) {
   } else f.files = outs.filter((o) => o.ok).map((o) => ({ name: o.file })).concat(outs.length ? [] : [{ name: String(job.src || '').split('/').pop() }]);
   f.phase = 'done';
   await sleep(1000);
-  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
+  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join('\n') });
 }
 /** What montclip_export says about a follower: done only once the file is in its folder. A copy into the folder that
  *  failed is failed (phase copyFailed, copied:false): the engine finished the file, but it is not where the user asked. */
@@ -582,8 +751,10 @@ const HANDLERS = {
     const open = !!(editor && editor.status === 200);
     let asr = null;
     try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
-    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open), height: statusCardHeight({ ffmpeg: s.ffmpeg, project: bound && bound.name, asr }, open) });
-    return { engine: publicStart(s), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    const card = { ffmpeg: s.ffmpeg, project: bound && bound.name, asr, mp4 };
+    cindy.send({ type: 'card-update', callId: msg.callId, v: 2, html: statusCard(card, open), height: statusCardHeight(card, open) });
+    return { engine: publicStart(s), mp4Export: mp4Export(mp4), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
       : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
@@ -669,7 +840,10 @@ const HANDLERS = {
       const c = { phase: 'failed', stage: 'start', code: e.code, reason: e.message, again };
       sendCard(callId, c); return plainFailure(c);
     }
-    return exportView(followExport(job, { session, callId, folder, dir, again }));
+    const f = followExport(job, { session, callId, folder, dir, again });
+    // which FFmpeg encodes an MP4 here, as the export starts (the engine's job does not say which program it ran)
+    const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
+    return Object.assign(exportView(f), { mp4Export: mp4Export(mp4) });
   },
   /* Only when the user agreed to the download (about 160 MB). */
   async montclip_install_ffmpeg() { return installFfmpeg(); },
@@ -789,6 +963,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
+    else if (m.type === 'editor-ticket') a = await node('montclip/editor-ticket', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)

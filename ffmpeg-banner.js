@@ -11,7 +11,7 @@
   const REASONS = {
     checksum: ["SHA256_MISMATCH", "SIZE_MISMATCH", "BAD_ARCHIVE"],
     interrupted: ["DOWNLOAD_FAILED"],
-    disk: ["ENOSPC", "EDQUOT"],
+    disk: ["DISK_FULL", "ENOSPC", "EDQUOT"],   // DISK_FULL: what main.js hands on (MontClip-Cindy#41)
     permission: ["EACCES", "EPERM"],
     unpack: ["UNPACK_FAILED"],
     cancelled: ["CANCELLED"],
