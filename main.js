@@ -442,10 +442,46 @@ function exportCard(c, lang) {
       (c.phase === 'copyFailed' && hasRaw(c) ? '<p style="' + small + ';margin-top:4px">' + t.copyProblemNote + '</p>' : '') +
       (c.openFailed ? '<p style="' + small + '">' + t.openFailed(esc(whyText(c.openFailed.code, c.openFailed.message, lang))) + '</p>' : '')
     : '';
-  const note = c.note ? '<p style="margin:8px 0 0;color:' + (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(c.note) + '</p>' : '';
+  // the report's lines and warnings, each on its own line (VV, #48 issuecomment-6729467270): two sentences joined with
+  // 「 · 」 read as one
+  const note = c.note ? String(c.note).split(' · ').filter(Boolean).map((s) => '<p style="margin:8px 0 0;color:' +
+    (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(s) + '</p>').join('') : '';
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.45 system-ui,sans-serif">' +
     (head ? '<div style="font-weight:600' + (c.phase === 'failed' ? ';color:var(--text-danger,#b42318)' : '') + '">' + head + '</div>' : '') + bar + where + body +
     (files ? '<ul style="margin:8px 0 0;padding-left:18px">' + files + '</ul>' : '') + note + open + '</div>';
+}
+/** The export card's height for the host's first frame, from what it holds (VV, #48 issuecomment-6729467270: a fixed
+ *  210 px cut 〔打开文件夹〕 off a 导出完成 card with two warnings). Laid out at the narrowest chat, 280 px: 252 px of
+ *  text, 18 Chinese characters of 13 px a line (17 in the file list, 19 of the 12 px small print), other characters
+ *  about 0.6 of one; buttons that don't fit one row wrap. Rounded up: too tall leaves a gap, too short cuts a button. */
+function exportCardHeight(c) {
+  const html = exportCard(c, 'zh');
+  const strip = (s) => s.replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, 'x');
+  const lines = (s, chars) => Math.max(1, Math.ceil([...strip(s)].reduce((n, ch) => n + (/[\u2e80-\uffef]/.test(ch) ? 1 : 0.6), 0) / chars));
+  let h = 24 + 6;                                                   // padding, and a little room
+  if (/font-weight:600/.test(html)) h += 19;                        // the head
+  if (/height:4px/.test(html)) h += 14;                             // the progress bar
+  for (const [, style, inner] of html.matchAll(/<p( style="[^"]*")?>([\s\S]*?)<\/p>/g)) {
+    const small = /font-size:12px/.test(style || '');
+    h += (style ? 8 : 26) + lines(inner, small ? 19 : 18) * (small ? 18 : 19);   // a bare <p> keeps its 1 em margins
+  }
+  const ul = /<ul[^>]*>([\s\S]*?)<\/ul>/.exec(html);
+  if (ul) {
+    h += 8;
+    for (const [, li] of ul[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)) {
+      const i = li.indexOf('<div');
+      h += lines(i < 0 ? li : li.slice(0, i), 17) * 19 + (i < 0 ? 0 : 2 + lines(li.slice(i), 19) * 18);
+    }
+  }
+  for (const [, row] of html.matchAll(/<div style="margin-top:10px;display:flex[^"]*">([\s\S]*?)<\/div>/g)) {
+    let rows = 1, w = 0;
+    for (const [, label] of row.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)) {
+      const bw = [...strip(label)].length * 13 + 26;               // 13 px a character, 12 px padding each side
+      if (w && w + 8 + bw > 252) { rows++; w = bw; } else w += (w ? 8 : 0) + bw;
+    }
+    h += 10 + rows * 30 + (rows - 1) * 8;
+  }
+  return Math.min(900, Math.max(90, Math.ceil(h)));
 }
 /* Each export card's last state, by its call: 打开文件夹 knows which folder, and the card is drawn again after the click
    (Cindy holds the clicked button until the next card-update, at most 8 s: GHOST_CARD_ACTION_INFLIGHT_MS). */
@@ -467,7 +503,7 @@ function sendCard(callId, c) {
     if (cardHeld.has(callId)) { const held = cardHeld.get(callId); cardHeld.delete(callId); sendCard(callId, held); }
   }, CARD_GAP_MS);
   const done = ['done', 'failed', 'cancelled', 'still', 'copyFailed'].includes(c.phase);
-  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: c.phase === 'failed' ? 260 : c.phase === 'copyFailed' ? 240 : c.phase === 'done' ? 210 : done ? 150 : 110 });
+  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: exportCardHeight(c) });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
