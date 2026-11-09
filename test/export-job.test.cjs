@@ -69,10 +69,12 @@ test("montclip_export answers with the job while the export is still running", {
   assert.equal(r.result.status, "running");
   assert.match(r.result.hint, /montclip_export \{job:"x_job1"\}/);
   // the owner (MontClip-Cindy#53, 2026-11-09): nothing may promise the export carries on if she switches away — in
-  // Cindy it is drawn in this task's editor tab, which slows or stops when it isn't in front
+  // Cindy it is drawn in this task's editor tab; whether it stops if she switches away is not verified (#53)
   assert.doesNotMatch(r.result.hint, /in the background|switch|other task/i);
   assert.match(r.result.hint, /editor tab/);
   assert.match(r.result.hint, /do not tell the streamer/i);
+  // JJ on #55 (issuecomment-6732707938): one plain line the AI can say to her as it is
+  assert.ok(r.result.hint.includes("导出要在这个任务的 MontClip 剪辑器页签里做完，请先别关掉它；切走的话我没法保证不会中断。"));
   // the card keeps showing it: still 'working' after the result
   await h.until(() => h.cards.some((c) => c.callId === "c1" && c.state === "working" && /正在导出 10%/.test(c.html)), "a progress card");
 });

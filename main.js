@@ -671,7 +671,7 @@ function statusCard(s, editorOpen) {
     '</div>';
 }
 
-/* Exports run in the background (JJ's P2 rule, MontClip-Cindy#3): Cindy gives a plugin tool call at most 330 s
+/* Exports answer at once and are followed by the card (JJ's P2 rule, MontClip-Cindy#3): Cindy gives a plugin tool call at most 330 s
    (`ghost tool call timed out … totalMs: 330001` in europa's log, 2026-11-05) and an export of a long edit takes longer.
    So montclip_export answers at once with the job, and the same tool reports it ({job}) or stops it ({cancel}).
    A follower here polls the engine, keeps the call's card up to date (a 'working' card stays open across calls), and
@@ -739,10 +739,10 @@ function exportView(f) {
   if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false, engineStatus: 'done' } : {}, plainFailure(f.failure));
   if (f.phase === 'cancelled') return o;
   // the owner (MontClip-Cindy#53, 2026-11-09): promise nothing about switching away — in Cindy the export is drawn in
-  // this task's editor tab, which slows when it isn't in front and stops if the engine restarts
+  // this task's editor tab; whether it stops if she switches away is not verified (#53)
   return Object.assign(o, { hint: 'The export has started and its card shows the progress. In Cindy it is drawn in this task\'s ' +
     'MontClip editor tab: keep that tab in this task until the card says it is done, and do not tell the streamer she can ' +
-    'leave it or that it will finish anyway. Check it with montclip_export {job:"' + f.id +
+    'leave it or that it will finish anyway. If she asks, say exactly: "导出要在这个任务的 MontClip 剪辑器页签里做完，请先别关掉它；切走的话我没法保证不会中断。" Check it with montclip_export {job:"' + f.id +
     '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
 }
 
