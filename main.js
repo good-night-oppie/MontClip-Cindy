@@ -366,11 +366,11 @@ function exportReportText(report) {
   if (!report) return '';
   const checks = Array.isArray(report.checks) ? report.checks : [];
   if (!checks.length) return report.line || '';
-  return checks.map((c) => {
-    if (c && c.code === 'EXPORT_CLIP_SILENT') return clipSilentText(c);
-    if (c && c.code === 'EXPORT_CLIP_UNCHECKED') return clipUncheckedText(c);
-    return (c && c.text) || '';
-  }).filter(Boolean).join(' · ');
+  const text = (c) => c.code === 'EXPORT_CLIP_SILENT' ? clipSilentText(c) : c.code === 'EXPORT_CLIP_UNCHECKED' ? clipUncheckedText(c) : c.text || '';
+  // the summary (size, frames, loudness…) stays one line; each warning is a line of its own (VV, #48; real run 6730067542)
+  const all = checks.filter(Boolean);
+  const summary = all.filter((c) => c.ok !== false).map(text).filter(Boolean).join(' · ');
+  return [summary, ...all.filter((c) => c.ok === false).map(text).filter(Boolean)].filter(Boolean).join('\n');
 }
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
@@ -442,9 +442,9 @@ function exportCard(c, lang) {
       (c.phase === 'copyFailed' && hasRaw(c) ? '<p style="' + small + ';margin-top:4px">' + t.copyProblemNote + '</p>' : '') +
       (c.openFailed ? '<p style="' + small + '">' + t.openFailed(esc(whyText(c.openFailed.code, c.openFailed.message, lang))) + '</p>' : '')
     : '';
-  // the report's lines and warnings, each on its own line (VV, #48 issuecomment-6729467270): two sentences joined with
-  // 「 · 」 read as one
-  const note = c.note ? String(c.note).split(' · ').filter(Boolean).map((s) => '<p style="margin:8px 0 0;color:' +
+  // the report's summary on one line, then each warning on a line of its own (VV, #48 issuecomment-6729467270): two
+  // warnings joined with 「 · 」 read as one sentence; the summary's own items stay together (real run 6730067542)
+  const note = c.note ? String(c.note).split('\n').filter(Boolean).map((s) => '<p style="margin:8px 0 0;color:' +
     (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(s) + '</p>').join('') : '';
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.45 system-ui,sans-serif">' +
     (head ? '<div style="font-weight:600' + (c.phase === 'failed' ? ';color:var(--text-danger,#b42318)' : '') + '">' + head + '</div>' : '') + bar + where + body +
@@ -635,7 +635,7 @@ async function runFollow(f, job) {
   } else f.files = outs.filter((o) => o.ok).map((o) => ({ name: o.file })).concat(outs.length ? [] : [{ name: String(job.src || '').split('/').pop() }]);
   f.phase = 'done';
   await sleep(1000);
-  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
+  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join('\n') });
 }
 /** What montclip_export says about a follower: done only once the file is in its folder. A copy into the folder that
  *  failed is failed (phase copyFailed, copied:false): the engine finished the file, but it is not where the user asked. */

@@ -44,7 +44,9 @@ test("EXPORT_CLIP_SILENT in a report: JJ's sentence by number and time, or by ti
     { ok: false, code: "EXPORT_CLIP_SILENT", n: 1, t: 0, text: "clip 1 (at 0:00) is silent — check that it is meant to be" },
     { ok: false, code: "EXPORT_CLIP_SILENT", n: null, t: 4332, text: "the sound at 1:12:12 is silent — check that it is meant to be" },
   ] });
-  assert.equal(line, "-14.0 LUFS · 第 1 段（时间线 0:00 处）是无声的，请确认是不是你想要的。 · 时间线 72:12 处的声音是无声的，请确认是不是你想要的。");
+  assert.equal(line, "-14.0 LUFS\n第 1 段（时间线 0:00 处）是无声的，请确认是不是你想要的。\n时间线 72:12 处的声音是无声的，请确认是不是你想要的。");
+  // the summary's own items stay on one line; only warnings break (VV, #48; real run 6730067542)
+  assert.equal(exportReportText({ checks: [{ ok: true, text: "640×360" }, { ok: true, text: "30 fps" }, { ok: true, text: "-14.0 LUFS" }] }), "640×360 · 30 fps · -14.0 LUFS");
 });
 
 test("EXPORT_CLIP_UNCHECKED in a report: JJ's unchecked sentence, word for word", () => {

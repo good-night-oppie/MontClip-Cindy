@@ -21,8 +21,8 @@ const AUDIO_FAILED = "第 3 段（时间线 1:12 处）的声音没读出来，�
 const LONG = "小梨的直播回放 2026-11-08 晚场 第二段 唱歌合集 最终版 11-08_1080p.mp4";
 const CASES = [
   ["done, one file", { phase: "done", folder: "Videos", dir: "C:\\Users\\<user>\\Videos", job: "x_1", files: [{ name: "demo 11-08_360p.mp4", bytes: 1234567 }], note: "−14.4 LUFS" }],
-  ["done, one warning", { phase: "done", folder: "Videos", dir: "C:\\Users\\<user>\\Videos", job: "x_1", files: [{ name: "demo 11-08_360p.mp4", bytes: 1234567 }], note: "−14.4 LUFS · " + SILENT }],
-  ["done, two warnings, a long name", { phase: "done", folder: "我的切片 2026 年 11 月", dir: "D:\\直播\\切片\\2026-11", job: "x_1", files: [{ name: LONG, bytes: 987654321, renamed: true }], note: "−14.4 LUFS · " + SILENT + " · " + UNCHECKED }],
+  ["done, one warning", { phase: "done", folder: "Videos", dir: "C:\\Users\\<user>\\Videos", job: "x_1", files: [{ name: "demo 11-08_360p.mp4", bytes: 1234567 }], note: "640×360 · 30 fps · −14.4 LUFS\n" + SILENT }],
+  ["done, two warnings, a long name", { phase: "done", folder: "我的切片 2026 年 11 月", dir: "D:\\直播\\切片\\2026-11", job: "x_1", files: [{ name: LONG, bytes: 987654321, renamed: true }], note: "640×360 · 30 fps · 540 frames · 18.00 s · −14.4 LUFS · 2.5 MB\n" + SILENT + "\n" + UNCHECKED }],
   ["done, three files", { phase: "done", folder: "Videos", job: "x_1", files: [{ name: "a 11-08_1080p.mp4", bytes: 1 }, { name: "b 11-08_1080p.mp4", bytes: 2 }, { name: LONG, bytes: 3 }], note: "" }],
   ["failed, #231", { phase: "failed", stage: "job", code: "EXPORT_AUDIO_FAILED", reason: AUDIO_FAILED }],
   ["failed, generic", { phase: "failed", stage: "job", code: "EXPORT_FAILED", reason: "renderer crashed" }],
@@ -32,10 +32,10 @@ const CASES = [
   ["no job", { phase: "failed", code: "NO_JOB", job: "x_1" }],
 ];
 
-test("each warning on its own line, none joined into one sentence", () => {
+test("the summary on one line, each warning on its own line, none joined into one sentence", () => {
   const { exportCard } = load();
   const html = exportCard(CASES[2][1], "zh");
-  for (const s of ["−14.4 LUFS", SILENT, UNCHECKED]) assert.ok(html.includes(">" + s + "<"), s);
+  for (const s of ["640×360 · 30 fps · 540 frames · 18.00 s · −14.4 LUFS · 2.5 MB", SILENT, UNCHECKED]) assert.ok(html.includes(">" + s + "<"), s);
   for (const s of [SILENT, UNCHECKED]) assert.ok(!html.includes(" · " + s), "not joined after another warning: " + s.slice(0, 8));
 });
 
