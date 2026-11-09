@@ -12,16 +12,17 @@
   let project = { clips: [], media: [] }, list = [], editor = null, editorSeen = 0, now = -1;
   /* Without a task ticket this page does not know whose task it belongs to (in Cindy the panel is a global tab
      with no session in its address), so it must not read the engine's currently open project, show lines or seek:
-     that is how one task's lines used to appear in another task (MontClip-Cindy#48). The one prompt below is JJ's
-     (#48 issuecomment-6728640338 ①). */
-  const NO_TASK_TEXT = '这里还没有对上哪个任务。请在要剪的任务里打开 MontClip 剪辑器，文稿就会显示在这里。';
+     that is how one task's lines used to appear in another task (MontClip-Cindy#48). The two prompts are JJ's
+     (#48 issuecomment-6729474414), one for each page; they promise nothing this panel can't do yet (#52). */
+  const NO_TASK_LINES = '这里暂时不显示文稿。请在要剪的任务里打开 MontClip 剪辑器，在剪辑器里看字幕。';
+  const NO_TASK_PROPS = '这里暂时不显示片段属性。请在要剪的任务里打开 MontClip 剪辑器，在剪辑器里选中片段查看。';
   const linesEmptyText = $("linesEmpty").textContent, propsEmptyText = $("propsEmpty").textContent;
   function showNoTask() {
     project = { clips: [], media: [] }; list = []; editor = null;
     $("lines").textContent = "";
-    $("linesEmpty").textContent = NO_TASK_TEXT; $("linesEmpty").hidden = false;
+    $("linesEmpty").textContent = NO_TASK_LINES; $("linesEmpty").hidden = false;
     $("props").textContent = "";
-    $("propsEmpty").textContent = NO_TASK_TEXT; $("propsEmpty").hidden = false;
+    $("propsEmpty").textContent = NO_TASK_PROPS; $("propsEmpty").hidden = false;
   }
 
   /* The framing page's origin (the browser's ancestorOrigins, else the referrer's): the only origin whose

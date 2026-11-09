@@ -32,9 +32,13 @@ test("source: the ticket flow is wired and the session id is out of the frame ad
   assert.match(panel, /channelReady/, "the panel knows whether it holds a task channel");
   assert.match(panel, /if \(!channelReady\) \{ showNoTask\(\); return; \}/, "without a channel the panel never reads /api/project");
   assert.match(panel, /showNoTask\(\);\r?\n  load\(\);/, "the panel starts fail-closed, before any ticket answer");
-  // JJ's words for a panel that knows no task (#48 issuecomment-6728640338 ①), word for word
-  assert.ok(panel.includes("const NO_TASK_TEXT = '这里还没有对上哪个任务。请在要剪的任务里打开 MontClip 剪辑器，文稿就会显示在这里。';"), "JJ's sentence");
-  assert.doesNotMatch(panel, /待 JJ 定稿/);
+  // JJ's words for a panel that knows no task, one for each page (#48 issuecomment-6729474414), word for word; they
+  // promise nothing the panel can't do in this version (VV, 6729467270)
+  assert.ok(panel.includes("const NO_TASK_LINES = '这里暂时不显示文稿。请在要剪的任务里打开 MontClip 剪辑器，在剪辑器里看字幕。';"), "文稿 page");
+  assert.ok(panel.includes("const NO_TASK_PROPS = '这里暂时不显示片段属性。请在要剪的任务里打开 MontClip 剪辑器，在剪辑器里选中片段查看。';"), "属性 page");
+  assert.match(panel, /\$\("linesEmpty"\)\.textContent = NO_TASK_LINES;/);
+  assert.match(panel, /\$\("propsEmpty"\)\.textContent = NO_TASK_PROPS;/);
+  assert.doesNotMatch(panel, /待 JJ 定稿|就会显示在这里/);
 });
 
 test("packed worker: tickets are 64-hex, 60 s, fresh per ask; channel trade is one-time; unbound UI is 409", { timeout: 60000 }, async (t) => {
