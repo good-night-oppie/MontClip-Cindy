@@ -116,7 +116,7 @@ function createBinder({ file, api, name = (session) => "任务 " + session.slice
           let restored = false;
           try { restored = (await api('POST', '/api/projects', { action: 'open', id: bound.project })).status === 200; } catch { }
           throw Object.assign(new Error(restored
-            ? 'Project switch failed; the previous task project was restored. A newly created project may remain in the project list.'
+            ? 'Project switch failed; the previous task project was restored. A newly created project may remain in the project list.' + (error && error.message ? ' Engine said: ' + error.message : '')
             : 'Project switch failed and engine rollback failed. The task binding remains unchanged; stop and inspect the project list.'),
           { code: restored ? 'PROJECT_SWITCH_FAILED' : 'PROJECT_ROLLBACK_FAILED', cause: error,
             saved: { project: target, boundProject: bound.project, restored } });
