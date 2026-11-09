@@ -163,7 +163,7 @@ async function h264With(setup) {
 
 test("settings in the plugin's settings folder: the user's FFmpeg with libx264 is used for H.264", { skip, timeout: 60000 }, async () => {
   const h = await h264With(({ config, setting }) => fs.writeFileSync(path.join(config, "external-ffmpeg.json"), setting));
-  assert.deepEqual(h.external, { ok: true });
+  assert.deepEqual(h.external, { ok: true, source: "settings" });
   assert.ok(h.encoders.includes("libx264"), JSON.stringify(h));
 });
 

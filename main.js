@@ -392,9 +392,35 @@ function copyFailureText(c, lang) {
   const t = EXPORT_TEXT[lang === 'en' ? 'en' : 'zh'];
   return Object.hasOwn(t.why, c.code || '') ? t.copyFailed(t.why[c.code]) : t.failedWhy.other;
 }
+/* The export report's checks in the words the streamer reads (MontClip#229 C1, JJ's final sentences): a clip that
+   came out silent, and a clip whose source took too long to read back, are said here, not in the engine's English
+   check line. {n} counts pieces with a picture; a sound on its own is said by its time only (the -track sentence).
+   Times are m:ss on the timeline, as the engine's own exportCheckText formats them. */
+function fmtTimeline(t) { const s = Math.max(0, Math.round(Number(t) || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+function clipSilentText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）是无声的，请确认是不是你想要的。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音是无声的，请确认是不是你想要的。';
+}
+function clipUncheckedText(c) {
+  return c.n != null && c.n !== '' ? '第 ' + c.n + ' 段（时间线 ' + fmtTimeline(c.t) + ' 处）在成片里没有声音，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。'
+    : '时间线 ' + fmtTimeline(c.t) + ' 处的声音在成片里是无声的，软件没能确认原片是不是也没有。成片已经导出，请先自己听一下这一段，再决定要不要发。';
+}
+function exportReportText(report) {
+  if (!report) return '';
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+  if (!checks.length) return report.line || '';
+  const text = (c) => c.code === 'EXPORT_CLIP_SILENT' ? clipSilentText(c) : c.code === 'EXPORT_CLIP_UNCHECKED' ? clipUncheckedText(c) : c.text || '';
+  // the summary (size, frames, loudness…) stays one line; each warning is a line of its own (VV, #48; real run 6730067542)
+  const all = checks.filter(Boolean);
+  const summary = all.filter((c) => c.ok !== false).map(text).filter(Boolean).join(' · ');
+  return [summary, ...all.filter((c) => c.ok === false).map(text).filter(Boolean)].filter(Boolean).join('\n');
+}
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
   const text = c.code === 'NO_JOB' ? '这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
+    /* EXPORT_AUDIO_FAILED: the engine's error is already JJ's sentence in the streamer's language (#231) — say
+       that, not the generic fallback (MontClip#229 C2). */
+    : c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim() ? String(c.reason).trim()
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -442,7 +468,9 @@ function exportCard(c, lang) {
     : c.phase === 'copyFailed' ? '<p style="margin:0">' + esc(copyFailureText(c, lang)) + '</p>'
     // 导出没有完成: why, in plain words; 你的剪辑都还在，没有丢。 — never the raw error (JJ v2)
     : c.phase === 'failed' ? (c.code === 'DATA_DIR_IN_USE' ? '<p style="margin:8px 0 0">' + esc(c.reason) + '</p>'
-      : '<p style="margin:8px 0 0">' + t.failedWhy[failedReason(c)] + t.kept + '</p>' +
+      // EXPORT_AUDIO_FAILED: the engine's sentence, as plainFailure gives the agent (MontClip#229 C2)
+      : '<p style="margin:8px 0 0">' + (c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim()
+        ? esc(String(c.reason).trim()) : t.failedWhy[failedReason(c)] + t.kept) + '</p>' +
         (c.installFailed ? '<p style="' + small + '">' + t.installFailed + '</p>' : '') +
         buttons([failedReason(c) === 'tool' ? ['install-ffmpeg', t.install, true] : ['retry', t.retry, true]]
           .concat(hasRaw(c) ? [['copy-problem', t.copyProblem, false]] : [])) +
@@ -457,20 +485,68 @@ function exportCard(c, lang) {
       (c.phase === 'copyFailed' && hasRaw(c) ? '<p style="' + small + ';margin-top:4px">' + t.copyProblemNote + '</p>' : '') +
       (c.openFailed ? '<p style="' + small + '">' + t.openFailed(esc(whyText(c.openFailed.code, c.openFailed.message, lang))) + '</p>' : '')
     : '';
-  const note = c.note ? '<p style="margin:8px 0 0;color:' + (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(c.note) + '</p>' : '';
+  // the report's summary on one line, then each warning on a line of its own (VV, #48 issuecomment-6729467270): two
+  // warnings joined with 「 · 」 read as one sentence; the summary's own items stay together (real run 6730067542)
+  const note = c.note ? String(c.note).split('\n').filter(Boolean).map((s) => '<p style="margin:8px 0 0;color:' +
+    (c.phase === 'failed' ? 'var(--text-danger,#b42318)' : 'var(--text-secondary,#6b6b66)') + '">' + esc(s) + '</p>').join('') : '';
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.45 system-ui,sans-serif">' +
     (head ? '<div style="font-weight:600' + (c.phase === 'failed' ? ';color:var(--text-danger,#b42318)' : '') + '">' + head + '</div>' : '') + bar + where + body +
     (files ? '<ul style="margin:8px 0 0;padding-left:18px">' + files + '</ul>' : '') + note + open + '</div>';
+}
+/** The export card's height for the host's first frame, from what it holds (VV, #48 issuecomment-6729467270: a fixed
+ *  210 px cut 〔打开文件夹〕 off a 导出完成 card with two warnings). Laid out at the narrowest chat, 280 px: 252 px of
+ *  text, 18 Chinese characters of 13 px a line (17 in the file list, 19 of the 12 px small print), other characters
+ *  about 0.6 of one; buttons that don't fit one row wrap. Rounded up: too tall leaves a gap, too short cuts a button. */
+function exportCardHeight(c) {
+  const html = exportCard(c, 'zh');
+  const strip = (s) => s.replace(/<[^>]+>/g, '').replace(/&(amp|lt|gt|quot|#39);/g, 'x');
+  const lines = (s, chars) => Math.max(1, Math.ceil([...strip(s)].reduce((n, ch) => n + (/[\u2e80-\uffef]/.test(ch) ? 1 : 0.6), 0) / chars));
+  let h = 24 + 6;                                                   // padding, and a little room
+  if (/font-weight:600/.test(html)) h += 19;                        // the head
+  if (/height:4px/.test(html)) h += 14;                             // the progress bar
+  for (const [, style, inner] of html.matchAll(/<p( style="[^"]*")?>([\s\S]*?)<\/p>/g)) {
+    const small = /font-size:12px/.test(style || '');
+    h += (style ? 8 : 26) + lines(inner, small ? 19 : 18) * (small ? 18 : 19);   // a bare <p> keeps its 1 em margins
+  }
+  const ul = /<ul[^>]*>([\s\S]*?)<\/ul>/.exec(html);
+  if (ul) {
+    h += 8;
+    for (const [, li] of ul[1].matchAll(/<li[^>]*>([\s\S]*?)<\/li>/g)) {
+      const i = li.indexOf('<div');
+      h += lines(i < 0 ? li : li.slice(0, i), 17) * 19 + (i < 0 ? 0 : 2 + lines(li.slice(i), 19) * 18);
+    }
+  }
+  for (const [, row] of html.matchAll(/<div style="margin-top:10px;display:flex[^"]*">([\s\S]*?)<\/div>/g)) {
+    let rows = 1, w = 0;
+    for (const [, label] of row.matchAll(/<button[^>]*>([\s\S]*?)<\/button>/g)) {
+      const bw = [...strip(label)].length * 13 + 26;               // 13 px a character, 12 px padding each side
+      if (w && w + 8 + bw > 252) { rows++; w = bw; } else w += (w ? 8 : 0) + bw;
+    }
+    h += 10 + rows * 30 + (rows - 1) * 8;
+  }
+  return Math.min(900, Math.max(90, Math.ceil(h)));
 }
 /* Each export card's last state, by its call: 打开文件夹 knows which folder, and the card is drawn again after the click
    (Cindy holds the clicked button until the next card-update, at most 8 s: GHOST_CARD_ACTION_INFLIGHT_MS). */
 const exportCards = new Map();
 const pendingProblems = new Map();   // session → {text, problem}: what its task page is to show, from 复制问题信息 on a card
+/* Cindy takes one card-update per call a second (the host's GHOST_CARD_MIN_INTERVAL_MS, 1000) and drops a faster one
+   without saying so: a failure right after a progress update left 「正在导出 0%」 for good (MontClip#229 C2). So one
+   card's updates go out at least CARD_GAP_MS apart; one that comes too soon waits, and only the newest state is sent. */
+const CARD_GAP_MS = 1100;
+const cardCooling = new Set(), cardHeld = new Map();   // calls inside their gap · the newest state waiting to go
 function sendCard(callId, c) {
   exportCards.delete(callId); exportCards.set(callId, c);
   while (exportCards.size > 50) exportCards.delete(exportCards.keys().next().value);
+  if (cardCooling.has(callId)) { cardHeld.set(callId, c); return Promise.resolve({ ok: true, held: true }); }
+  // the gap is a timer, not a clock reading, so it is the same timer the rest of the follower runs on
+  cardCooling.add(callId);
+  setTimeout(() => {
+    cardCooling.delete(callId);
+    if (cardHeld.has(callId)) { const held = cardHeld.get(callId); cardHeld.delete(callId); sendCard(callId, held); }
+  }, CARD_GAP_MS);
   const done = ['done', 'failed', 'cancelled', 'still', 'copyFailed'].includes(c.phase);
-  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: c.phase === 'failed' ? 260 : c.phase === 'copyFailed' ? 240 : c.phase === 'done' ? 210 : done ? 150 : 110 });
+  return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: exportCardHeight(c) });
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -638,7 +714,7 @@ async function runFollow(f, job) {
     return;
   }
   const outs = job.result && Array.isArray(job.result.outputs) ? job.result.outputs : [];
-  f.report = outs.map((o) => o.report && o.report.line).filter(Boolean);
+  f.report = outs.map((o) => exportReportText(o.report)).filter(Boolean);
   if (f.dir) {
     f.phase = 'copy';
     sendCard(f.callId, { phase: 'copy', folder: f.folder });
@@ -652,7 +728,7 @@ async function runFollow(f, job) {
   } else f.files = outs.filter((o) => o.ok).map((o) => ({ name: o.file })).concat(outs.length ? [] : [{ name: String(job.src || '').split('/').pop() }]);
   f.phase = 'done';
   await sleep(1000);
-  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join(' · ') });
+  sendCard(f.callId, { phase: 'done', folder: f.folder, dir: f.dir, job: f.id, files: f.files, note: f.report.join('\n') });
 }
 /** What montclip_export says about a follower: done only once the file is in its folder. A copy into the folder that
  *  failed is failed (phase copyFailed, copied:false): the engine finished the file, but it is not where the user asked. */
@@ -887,6 +963,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
+    else if (m.type === 'editor-ticket') a = await node('montclip/editor-ticket', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');
     // the main view's button: open that task's editor tab and go to the task (Cindy checks it follows a real click)

@@ -93,8 +93,9 @@ function copyButton(box, problem) {
   setInterval(sendTheme, 1500);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sendTheme);
 
-  let url = null, frame = null;
-  function place(next) {
+  let url = null, frame = null, placing = 0;
+  async function place(next) {
+    const seq = ++placing;
     url = next;
     if (!frame) {
       frame = document.createElement('iframe');
@@ -104,8 +105,29 @@ function copyButton(box, problem) {
       frame.addEventListener('load', () => { status.hidden = true; sent = null; sendTheme(); });
       document.body.appendChild(frame);
     }
-    frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (view === 'task' && session ? '&cindySession=' + encodeURIComponent(session) : '');
+    /* A fresh one-time ticket for every placement (MontClip#251 items 2-3, #260 item 4): the editor trades it
+       for its task binding, the side panel for its channel suffix. The session id itself never goes in the
+       address any more, and a ticket is never reused across placements. */
+    let ticket = '';
+    if (session) {
+      const t = await ask('editor-ticket', { session });
+      if (seq !== placing) return;
+      if (t && t.ticket) ticket = t.ticket;
+    }
+    if (seq !== placing) return;
+    frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
   }
+  /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
+     host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
+     gets an answer; the ticket goes back to that window only. */
+  window.addEventListener('message', async (e) => {
+    if (!frame || !url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
+    let origin = null;
+    try { origin = new URL(url).origin; } catch (err) { return; }
+    if (e.origin !== origin) return;
+    const t = await ask('editor-ticket', { session });
+    if (t && t.ticket) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
+  });
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
   async function bind() {
