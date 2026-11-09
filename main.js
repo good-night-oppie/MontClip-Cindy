@@ -455,19 +455,17 @@ const pendingProblems = new Map();   // session → {text, problem}: what its ta
    without saying so: a failure right after a progress update left 「正在导出 0%」 for good (MontClip#229 C2). So one
    card's updates go out at least CARD_GAP_MS apart; one that comes too soon waits, and only the newest state is sent. */
 const CARD_GAP_MS = 1100;
-const cardSentAt = new Map(), cardHeld = new Map();   // call → when its last update went out · the state waiting to go
+const cardCooling = new Set(), cardHeld = new Map();   // calls inside their gap · the newest state waiting to go
 function sendCard(callId, c) {
   exportCards.delete(callId); exportCards.set(callId, c);
   while (exportCards.size > 50) exportCards.delete(exportCards.keys().next().value);
-  const wait = (cardSentAt.has(callId) ? cardSentAt.get(callId) + CARD_GAP_MS : 0) - Date.now();
-  if (wait > 0) {
-    const waiting = cardHeld.has(callId);
-    cardHeld.set(callId, c);
-    if (!waiting) setTimeout(() => { const held = cardHeld.get(callId); cardHeld.delete(callId); sendCard(callId, held); }, wait);
-    return Promise.resolve({ ok: true, held: true });
-  }
-  cardSentAt.delete(callId); cardSentAt.set(callId, Date.now());
-  while (cardSentAt.size > 50) cardSentAt.delete(cardSentAt.keys().next().value);
+  if (cardCooling.has(callId)) { cardHeld.set(callId, c); return Promise.resolve({ ok: true, held: true }); }
+  // the gap is a timer, not a clock reading, so it is the same timer the rest of the follower runs on
+  cardCooling.add(callId);
+  setTimeout(() => {
+    cardCooling.delete(callId);
+    if (cardHeld.has(callId)) { const held = cardHeld.get(callId); cardHeld.delete(callId); sendCard(callId, held); }
+  }, CARD_GAP_MS);
   const done = ['done', 'failed', 'cancelled', 'still', 'copyFailed'].includes(c.phase);
   return cindy.send({ type: 'card-update', callId, v: 2, state: done ? 'done' : 'working', html: exportCard(c), height: c.phase === 'failed' ? 260 : c.phase === 'copyFailed' ? 240 : c.phase === 'done' ? 210 : done ? 150 : 110 });
 }
