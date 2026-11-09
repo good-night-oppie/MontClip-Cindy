@@ -77,6 +77,13 @@ test("montclip_export answers with the job while the export is still running", {
   await h.until(() => h.cards.some((c) => c.callId === "c1" && c.state === "working" && /正在导出 10%/.test(c.html)), "a progress card");
 });
 
+test("the montclip_export description promises nothing about the background (MontClip-Cindy#53)", () => {
+  const g = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "ghost.json"), "utf8"));
+  const d = g.tools.find((x) => x.name === "montclip_export").description;
+  assert.doesNotMatch(d, /后台|background/i);
+  assert.match(d, /不要跟主播说切走也不会断/);
+});
+
 test("{job} is not done until the engine has finished the file and it is copied into the folder", { timeout: 10000 }, async (t) => {
   const h = host();
   t.after(() => { if (h.job.status === "running" || h.job.status === "pending") h.job.status = "cancelled"; });
