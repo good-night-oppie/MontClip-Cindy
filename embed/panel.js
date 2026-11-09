@@ -8,7 +8,7 @@
   "use strict";
   const M = window.MontClipPanelModel;
   const $ = (id) => document.getElementById(id);
-  let ch = null, channelReady = false;
+  let ch = null, channelReady = false, events = null;
   let project = { clips: [], media: [] }, list = [], editor = null, editorSeen = 0, now = -1;
   /* Without a task ticket this page does not know whose task it belongs to (in Cindy the panel is a global tab
      with no session in its address), so it must not read the engine's currently open project, show lines or seek:
@@ -55,9 +55,18 @@
       channelReady = true;
       $("linesEmpty").textContent = linesEmptyText; $("propsEmpty").textContent = propsEmptyText;
       ch.postMessage({ type: "hello" });
+      // the engine's change signal, only once this page has a task (QQ, #48): without one it listens to nothing
+      if (!events) { events = new EventSource("/api/events"); events.addEventListener("change", load); }
       load();
       return true;
     } catch (e) { return false; }
+  }
+  /* Back to no task: the channel and the change signal both end, and the page says so. */
+  function closeChannel() {
+    if (ch) { try { ch.close(); } catch (e) { } }
+    if (events) { try { events.close(); } catch (e) { } }
+    ch = null; events = null; channelReady = false;
+    showNoTask();
   }
   function askParentForTicket() {
     if (!parentOrigin || window.parent === window) return;
@@ -171,7 +180,7 @@
   /* No timeout on the editor's state: a background tab's timers are slowed (VV, #114: the highlight went after 3 s),
      so silence is not the editor going away. The last highlight and selection stay until the editor says otherwise;
      a click still checks how lately the channel was heard from. */
-  new EventSource("/api/events").addEventListener("change", load);
+  window.addEventListener("pagehide", closeChannel);
   showNoTask();
   load();
 })();

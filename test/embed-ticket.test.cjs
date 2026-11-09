@@ -39,6 +39,15 @@ test("source: the ticket flow is wired and the session id is out of the frame ad
   assert.match(panel, /\$\("linesEmpty"\)\.textContent = NO_TASK_LINES;/);
   assert.match(panel, /\$\("propsEmpty"\)\.textContent = NO_TASK_PROPS;/);
   assert.doesNotMatch(panel, /待 JJ 定稿|就会显示在这里/);
+  // QQ (#48): the change signal only once the panel has its task's channel, and it ends with the channel
+  assert.equal((panel.match(/new EventSource\(/g) || []).length, 1, "one place opens the change signal");
+  const open = panel.slice(panel.indexOf("async function openChannel("), panel.indexOf("function closeChannel("));
+  assert.ok(open.indexOf("new EventSource(") > open.indexOf("channelReady = true;"), "opened only after the channel is ready");
+  const close = panel.slice(panel.indexOf("function closeChannel("), panel.indexOf("function askParentForTicket("));
+  assert.match(close, /events\.close\(\)/);
+  assert.match(close, /channelReady = false;/);
+  assert.match(close, /showNoTask\(\);/);
+  assert.match(panel, /window\.addEventListener\("pagehide", closeChannel\);/);
 });
 
 test("packed worker: tickets are 64-hex, 60 s, fresh per ask; channel trade is one-time; unbound UI is 409", { timeout: 60000 }, async (t) => {
