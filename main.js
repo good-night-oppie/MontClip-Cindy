@@ -738,7 +738,11 @@ function exportView(f) {
   if (f.phase === 'done') return Object.assign(o, { files: (f.files || []).map((x) => String(x.name || x.file || '').split(/[\/]/).pop()), report: f.report || [] });
   if (f.phase === 'failed' || f.phase === 'copyFailed') return Object.assign(o, f.phase === 'copyFailed' ? { copied: false, engineStatus: 'done' } : {}, plainFailure(f.failure));
   if (f.phase === 'cancelled') return o;
-  return Object.assign(o, { hint: 'The export runs in the background and its card shows the progress. Check it with montclip_export {job:"' + f.id +
+  // the owner (MontClip-Cindy#53, 2026-11-09): promise nothing about switching away — in Cindy the export is drawn in
+  // this task's editor tab, which slows when it isn't in front and stops if the engine restarts
+  return Object.assign(o, { hint: 'The export has started and its card shows the progress. In Cindy it is drawn in this task\'s ' +
+    'MontClip editor tab: keep that tab in this task until the card says it is done, and do not tell the streamer she can ' +
+    'leave it or that it will finish anyway. Check it with montclip_export {job:"' + f.id +
     '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
 }
 
