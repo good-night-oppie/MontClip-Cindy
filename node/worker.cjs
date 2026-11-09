@@ -149,6 +149,24 @@ function start() {
 }
 
 const binder = createBinder({ file: path.join(DATA, "sessions.json"), api: (...a) => api(...a) });
+let projectSwitchTasks;
+
+// Project switches need a stable session scope: the project changes as part of
+// the operation itself. Reuse the pinned engine's durable receipt implementation
+// in a separate namespace, without changing its per-project editing scopes.
+async function taskProjects(p) {
+  await start();
+  const { taskId, idempotency_key, wait_ms, ...args } = p.arguments || {};
+  if (!taskId && idempotency_key == null) return { text: await binder.projects(p.session, args) };
+  projectSwitchTasks ||= require(path.join(APP, 'tool-tasks.js')).createToolTasks({
+    dir: path.join(DATA, 'cindy-project-tasks'), dataDir: DATA,
+  });
+  const receipt = await projectSwitchTasks.call({ scope: JSON.stringify([p.session, 'projects']),
+    name: 'fablecut_projects', args, key: idempotency_key, taskId, wait_ms, waitForCompletion: true },
+  () => binder.projects(p.session, args));
+  // A replay/query is historical evidence; it must not switch the task back.
+  return { text: JSON.stringify(receipt) };
+}
 
 const METHODS = {
   async "montclip/start"() {
@@ -381,6 +399,9 @@ function dispatch(method, params) {
   let project;
   const run = async () => {
     const p = { ...params };
+    if (p.session && method === 'montclip/call' && p.name === 'fablecut_projects' &&
+        (p.arguments?.taskId || ['new', 'open', 'duplicate'].includes(p.arguments?.action)))
+      return taskProjects(p);
     if (p.session && ['montclip/call', 'montclip/ui', 'montclip/export-start'].includes(method)) {
       await start();
       if (method === 'montclip/export-start' && p.expectedProject) {

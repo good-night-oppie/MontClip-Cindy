@@ -34,7 +34,13 @@ const newToken = () => crypto.randomBytes(32).toString("hex");
    `api(method, path, body)` → {status, body} talks to the engine. */
 function createBinder({ file, api, name = (session) => "任务 " + session.slice(0, 8) }) {
   let chain = Promise.resolve();
-  const read = () => { try { const j = JSON.parse(fs.readFileSync(file, "utf8")); return j && typeof j === "object" ? j : {}; } catch { return {}; } };
+  const read = () => {
+    try {
+      const j = JSON.parse(fs.readFileSync(file, "utf8"));
+      if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error('invalid task bindings');
+      return j;
+    } catch (e) { if (e.code === 'ENOENT') return {}; throw e; }
+  };
   const write = (map) => {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const tmp = file + ".tmp";
@@ -74,6 +80,49 @@ function createBinder({ file, api, name = (session) => "任务 " + session.slice
     bind(session) {
       const run = chain.then(() => once(String(session || "")));
       chain = run.catch(() => { });
+      return run;
+    },
+    // Called inside the worker operation queue. Keep bind and rebind in the same
+    // binder queue too. GUI/SSE tickets are NOT re-claimed here (#56/#2).
+    projects(session, args) {
+      const run = chain.then(async () => {
+        if (typeof session !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(session)) throw new Error('a task session is required');
+        if (!['new', 'open', 'duplicate'].includes(args.action)) throw new Error('unsupported project operation');
+        if (args.open !== undefined && typeof args.open !== 'boolean') throw new Error('open must be a boolean');
+        const map = read();
+        // Check before once(): even binding the caller would otherwise change active.
+        if (args.action === 'open' && Object.entries(map).some(([s, id]) => s !== session && id === args.id))
+          throw Object.assign(new Error('This project belongs to another task; open it in that task.'), { code: 'PROJECT_TASK_CONFLICT' });
+        const bound = await once(session);
+        const switching = args.action === 'open' || (args.action === 'new' ? args.open !== false : !!args.open);
+        let target = null;
+        try {
+          const r = await api('POST', '/api/projects', args);
+          if (r.status !== 200 || !r.body?.id || !r.body?.project)
+            throw new Error(r.body?.error || 'the project operation failed');
+          const out = r.body;
+          target = out.id;
+          if (switching) {
+            const current = read();
+            current[session] = out.id; // structured HTTP id, never the tool's prose
+            write(current);
+          }
+          const p = out.project;
+          return `${switching ? 'Opened ' : ''}${out.id} ${JSON.stringify(p.name)}${switching ? ' (OPEN)' : ''} — ${p.clips} clip(s), ${p.media} media. ` +
+            (switching ? 'This task now uses this project. Re-read it before editing.' : 'The task binding is unchanged.');
+        } catch (error) {
+          // A created project may remain on disk. Never repeat a keyed mutation to
+          // repair a failed binding write; its durable failed receipt explains it.
+          let restored = false;
+          try { restored = (await api('POST', '/api/projects', { action: 'open', id: bound.project })).status === 200; } catch { }
+          throw Object.assign(new Error(restored
+            ? 'Project switch failed; the previous task project was restored. A newly created project may remain in the project list.' + (error && error.message ? ' Engine said: ' + error.message : '')
+            : 'Project switch failed and engine rollback failed. The task binding remains unchanged; stop and inspect the project list.'),
+          { code: restored ? 'PROJECT_SWITCH_FAILED' : 'PROJECT_ROLLBACK_FAILED', cause: error,
+            saved: { project: target, boundProject: bound.project, restored } });
+        }
+      });
+      chain = run.catch(() => {});
       return run;
     },
     map: read,
