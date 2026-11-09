@@ -7,6 +7,9 @@ test('an expired delivery retry is terminal with an exports-folder action',async
  const source=fs.readFileSync(path.join(__dirname,'../main.js'),'utf8');
  vm.runInNewContext(source+"\nsendCard('old',{phase:'still',job:'x_old',folder:'Videos'});",{cindy,BroadcastChannel,console:{warn(){}},setTimeout,clearTimeout,setInterval,clearInterval,URL});
  await listener({type:'event',name:'card-action',actionId:'retry-delivery',callId:'old'});
+ // the click comes right after the first card: Cindy would drop a redraw that soon (one a second), so sendCard holds it
+ // until the gap is over (CARD_GAP_MS, test/card-rate.test.cjs)
+ await new Promise(r=>setTimeout(r,1300));
  const card=cards.at(-1);assert.equal(card.state,'done');assert.match(card.html,/记录已失效/);assert.match(card.html,/open-folder:exports/);assert.doesNotMatch(card.html,/retry-delivery|还在导出/);
 });
 test('completed export can be delivered after engine expiry and worker restart',{timeout:15000},async t=>{
