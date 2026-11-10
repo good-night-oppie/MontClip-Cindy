@@ -129,6 +129,39 @@ function createBinder({ file, api, name = (session) => "任务 " + session.slice
   };
 }
 
+/* MontClip-Cindy#56 / #2: which step of opening the editor never happened in a task. The worker counts the task
+   tickets it handed out per session — a count and a time, never the ticket — and the refusals by the engine's
+   own short code. In memory only, bounded, gone with the worker. Odd session ids and anything that is not a
+   short upper-case code are not kept, so no path, ticket or message text can end up in an answer. */
+function createEditorTrace({ now = Date.now, max = 64 } = {}) {
+  const seen = new Map();
+  const ok = (s) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
+  const entry = (session) => {
+    if (!ok(session)) return null;
+    let e = seen.get(session);
+    if (!e) {
+      e = { issued: 0, at: null, refused: 0, refusal: null };
+      seen.set(session, e);
+      while (seen.size > max) seen.delete(seen.keys().next().value);
+    }
+    return e;
+  };
+  return {
+    issued(session) { const e = entry(session); if (e) { e.issued += 1; e.at = now(); } },
+    refused(session, code) {
+      const e = entry(session);
+      if (e) { e.refused += 1; e.refusal = typeof code === 'string' && /^[A-Z][A-Z0-9_]{2,40}$/.test(code) ? code : 'UNKNOWN'; }
+    },
+    why(session) {
+      const e = (ok(session) && seen.get(session)) || { issued: 0, at: null, refused: 0, refusal: null };
+      const base = { ticketsIssued: e.issued, lastTicketAt: e.at == null ? null : new Date(e.at).toISOString(), ticketsRefused: e.refused };
+      if (!e.issued && e.refused) return { code: 'TICKET_REFUSED_BY_ENGINE', ...base, lastRefusal: e.refusal };
+      if (!e.issued) return { code: 'NO_TICKET_REQUESTED', ...base };
+      return { code: 'TICKET_ISSUED_NOT_BOUND', ...base, ...(e.refused ? { lastRefusal: e.refusal } : {}) };
+    },
+  };
+}
+
 /* A tool's answer as the agent should see it: text blocks joined; an image block (fablecut_frame) is too big for a
    tool result through main.js, so it is written into the data folder and named instead. */
 function flatten(out, framesDir) {
@@ -444,5 +477,5 @@ function maskHome(p, home = require("node:os").homedir(), platform = process.pla
   if (t === h) return "~";
   return t.startsWith(h + sep) ? "~" + sep + (win ? s.replace(/\//g, "\\") : s).slice(h.length).replace(/^[\\/]+/, "") : s;
 }
-module.exports = { h264Export, ffmpegVersionFrom, maskHome, fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+module.exports = { h264Export, ffmpegVersionFrom, maskHome, fileHostFrom, configDir, realLocation, externalFfmpegSettings, aboutMbFrom, asrModelMb, fillWindowsEnv, newToken, createBinder, createEditorTrace, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, freeName, deliverFiles, openFolder, rememberFolder, folderOfJob };

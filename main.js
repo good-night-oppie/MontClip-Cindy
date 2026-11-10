@@ -746,6 +746,13 @@ function exportView(f) {
     '"} (it answers at once); it is done when status is "done". Stop it with montclip_export {cancel:"' + f.id + '"}.' });
 }
 
+/* #56: what each reason means, for the agent. Facts only: what the worker saw, not a guess at the cause. */
+const EDITOR_WHY = {
+  NO_TICKET_REQUESTED: 'No editor page has asked for the ticket of this task since the plugin started: the editor view did not load in this task. Asking Cindy to open it returning ok does not mean it was shown.',
+  TICKET_ISSUED_NOT_BOUND: 'An editor page asked for and was given the ticket of this task, but no editor is connected for this task now: it did not finish connecting, or it was closed or is in the background.',
+  TICKET_REFUSED_BY_ENGINE: 'An editor page asked for the ticket of this task and the engine refused to register one.',
+};
+
 const HANDLERS = {
   async montclip_status(args, msg) {
     const bound = await forTask(msg).catch(() => null);
@@ -753,6 +760,8 @@ const HANDLERS = {
     let editor = null;
     try { editor = await node('montclip/ui', { cmd: 'state', session: taskOf(msg) }); } catch (e) { editor = { error: String(e.message) }; }
     const open = !!(editor && editor.status === 200);
+    let why = null;
+    if (!open) try { why = await node('montclip/editor-trace', { session: taskOf(msg) }); } catch (e) { why = null; }
     let asr = null;
     try { asr = await node('montclip/asr-status'); } catch (e) { asr = null; }
     const mp4 = await node('montclip/h264', {}, { timeoutMs: 20000 }).catch(() => null);
@@ -761,7 +770,8 @@ const HANDLERS = {
     return { engine: publicStart(s), mp4Export: mp4Export(mp4), transcription: asr ? { engine: asr.engine, model: asr.model, punctuation: asr.punct,
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
-      : { open: false, note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
+      : { open: false, ...(why ? { why: { ...why, meaning: EDITOR_WHY[why.code] || null } } : {}),
+        note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
   },
   async list_tools(args) {
     const tools = await engineTools();

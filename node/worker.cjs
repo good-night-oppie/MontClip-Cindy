@@ -14,7 +14,7 @@ const net = require("node:net");
 const http = require("node:http");
 const readline = require("node:readline");
 const { spawn, spawnSync } = require("node:child_process");
-const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
+const { fillWindowsEnv, newToken, createBinder, createEditorTrace, flatten, ffmpegSpec, installFfmpeg, unpackCode, zipUnpackedBytes, freeBytes, spaceNeeded,
   exportFiles, deliverFiles, openFolder, rememberFolder, folderOfJob, aboutMbFrom, asrModelMb, fileHostFrom, externalFfmpegSettings,
   h264Export, ffmpegVersionFrom, maskHome } = require("./lib.cjs");
 const { planAsr, installAsr, placesOk, cleanupStaging } = require("./asr-install.cjs");
@@ -149,6 +149,7 @@ function start() {
 }
 
 const binder = createBinder({ file: path.join(DATA, "sessions.json"), api: (...a) => api(...a) });
+const editorTrace = createEditorTrace();   // #56: tickets handed out per task (count and time only)
 let projectSwitchTasks;
 
 // Project switches need a stable session scope: the project changes as part of
@@ -387,9 +388,17 @@ const METHODS = {
     const session = String(p.session || "");
     const b = await binder.bind(session);
     const r = await api("POST", "/api/embed/ticket", { project: b.project, session });
-    if (r.status !== 200 || !r.body || !r.body.ticket) throw Object.assign(new Error((r.body && r.body.error) || "the engine refused a task ticket"), { code: (r.body && r.body.code) || "TASK_TICKET_REFUSED" });
+    if (r.status !== 200 || !r.body || !r.body.ticket) {
+      const code = (r.body && r.body.code) || "TASK_TICKET_REFUSED";
+      editorTrace.refused(session, code);
+      throw Object.assign(new Error((r.body && r.body.error) || "the engine refused a task ticket"), { code });
+    }
+    editorTrace.issued(session);
     return { ticket: r.body.ticket, expiresInMs: r.body.expiresInMs };
   },
+  /* #56: why no editor is bound to this task, as far as the worker can see — whether its page ever asked for a
+     ticket. Whether the page then traded it is the engine's to know; it does not say yet. */
+  async "montclip/editor-trace"(p) { return editorTrace.why(String(p.session || "")); },
 };
 
 // Bind and operate in one queue: async readline listeners otherwise interleave at every await.
