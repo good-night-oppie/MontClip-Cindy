@@ -20,9 +20,21 @@ const { fillWindowsEnv, newToken, createBinder, flatten, ffmpegSpec, installFfmp
 const { planAsr, installAsr, placesOk, cleanupStaging } = require("./asr-install.cjs");
 const asrRuntime = () => JSON.parse(fs.readFileSync(path.join(__dirname, "asr-runtime.json"), "utf8"));
 
-for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...a) => process.stderr.write(a.map(String).join(" ") + "\n");
-
 const APP = path.resolve(process.env.MONTCLIP_CINDY_APP || path.join(__dirname, "app"));
+// Never fall back to raw output if the engine redactor or its environment is unavailable.
+let redactLog = null;
+try {
+  const { redactProblem } = require(path.join(APP, "problem-redact.js"));
+  if (typeof redactProblem !== "function") throw new Error("missing redactor");
+  const options = { home: os.homedir(), platform: process.platform, user: os.userInfo().username };
+  redactLog = text => redactProblem(text, options);
+} catch { /* fixed fallback below */ }
+const logFallback = code => process.stderr.write('[montclip] {"event":"log-redaction-unavailable","code":"' + code + '"}\n');
+for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...args) => {
+  if (!redactLog) return logFallback("LOG_REDACTION_UNAVAILABLE");
+  try { process.stderr.write(redactLog(args.map(String).join(" ")) + "\n"); }
+  catch { logFallback("LOG_REDACTION_FAILED"); }
+};
 // the plugin's work lives in the user's home, never inside the plugin (an update replaces the plugin folder)
 const DATA = path.resolve(process.env.MONTCLIP_CINDY_DATA || path.join(os.homedir(), "MontClip-Cindy"));
 const FOLDERS_FILE = path.join(DATA, "cindy-export-folders.json");   // which folder each export went into (打开文件夹)
@@ -80,7 +92,14 @@ function ffmpegState() {
 const PREFERRED_PORT = process.env.MONTCLIP_CINDY_PORT !== undefined ? Number(process.env.MONTCLIP_CINDY_PORT) : 47777;
 
 const reply = (m) => process.stdout.write(JSON.stringify(m) + "\n");
-const note = (entry) => process.stderr.write("[montclip] " + JSON.stringify({ at: new Date().toISOString(), ...entry }) + "\n");
+const note = (entry) => {
+  if (!redactLog) return logFallback("LOG_REDACTION_UNAVAILABLE");
+  try {
+    const line = redactLog(JSON.stringify({ at: new Date().toISOString(), ...entry }));
+    JSON.parse(line); // a malformed redaction must never be written
+    process.stderr.write("[montclip] " + line + "\n");
+  } catch { logFallback("LOG_REDACTION_FAILED"); }
+};
 
 function freePort(port) {
   return new Promise((resolve, reject) => {
