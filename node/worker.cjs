@@ -26,10 +26,11 @@ let redactLog = null;
 try {
   const { redactProblem } = require(path.join(APP, "problem-redact.js"));
   if (typeof redactProblem !== "function") throw new Error("missing redactor");
-  const options = { home: os.homedir(), platform: process.platform, user: os.userInfo().username };
+  const options = { home: os.homedir(), platform: process.platform };
+  try { options.user = os.userInfo().username; } catch { /* optional */ }
   redactLog = text => redactProblem(text, options);
 } catch { /* fixed fallback below */ }
-const logFallback = code => process.stderr.write('[montclip] {"event":"log-redaction-unavailable","code":"' + code + '"}\n');
+const logFallback = (code, done) => process.stderr.write('[montclip] {"event":"log-redaction-unavailable","code":"' + code + '"}\n', done);
 for (const k of ["log", "info", "debug", "warn", "error"]) console[k] = (...args) => {
   if (!redactLog) return logFallback("LOG_REDACTION_UNAVAILABLE");
   try { process.stderr.write(redactLog(args.map(String).join(" ")) + "\n"); }
@@ -92,14 +93,35 @@ function ffmpegState() {
 const PREFERRED_PORT = process.env.MONTCLIP_CINDY_PORT !== undefined ? Number(process.env.MONTCLIP_CINDY_PORT) : 47777;
 
 const reply = (m) => process.stdout.write(JSON.stringify(m) + "\n");
-const note = (entry) => {
-  if (!redactLog) return logFallback("LOG_REDACTION_UNAVAILABLE");
+const note = (entry, done) => {
+  if (!redactLog) return logFallback("LOG_REDACTION_UNAVAILABLE", done);
   try {
     const line = redactLog(JSON.stringify({ at: new Date().toISOString(), ...entry }));
     JSON.parse(line); // a malformed redaction must never be written
-    process.stderr.write("[montclip] " + line + "\n");
-  } catch { logFallback("LOG_REDACTION_FAILED"); }
+    process.stderr.write("[montclip] " + line + "\n", done);
+  } catch { logFallback("LOG_REDACTION_FAILED", done); }
 };
+
+// Node's default fatal handler prints a raw stack directly to stderr. Flush one safe note before exiting.
+let fatalInProgress = false;
+function fatal(event, error) {
+  if (fatalInProgress) return process.exit(1);
+  fatalInProgress = true;
+  process.exitCode = 1;
+  const finish = () => process.exit(1);
+  const deadline = setTimeout(finish, 1000);
+  deadline.unref();
+  try {
+    const code = error && typeof error.code === "string" ? error.code : "UNKNOWN";
+    const message = error && error.message !== undefined ? String(error.message) : String(error);
+    note({event, code, message}, finish);
+  } catch {
+    try { fs.writeSync(2, '[montclip] {"event":"log-redaction-unavailable","code":"LOG_REDACTION_FAILED"}\n'); } catch { }
+    finish();
+  }
+}
+process.on("uncaughtException", error => fatal("uncaughtException", error));
+process.on("unhandledRejection", error => fatal("unhandledRejection", error));
 
 function freePort(port) {
   return new Promise((resolve, reject) => {

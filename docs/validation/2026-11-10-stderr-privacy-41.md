@@ -19,3 +19,11 @@
 代码提交后运行 `npm run build` 和 Forge pack；`SOURCE.json` 的插件提交为上述代码提交、`dirty: false`，引擎提交如上。包 `montclip-0.5.1.cindy` 的 SHA-256 为 `f7e51f0ac6852b777596fce406d92e5cfcdc9ac3387ea8502c09cd1f26578ae4`。包未安装或发布，不进 Git。
 
 Win11 Cindy 实跑未完成。Forge 支持经明确授权使用 `install_copy:true` 创建实例副本，但 MontClip 默认仍使用用户目录下 `MontClip-Cindy`，尚未发现单实例注入临时 `MONTCLIP_CINDY_DATA` 的宿主入口，因此副本不等于数据隔离。先确认隔离数据与失败注入方式，再授权安装、触发失败并亲眼核对；还需确认按实例 ID 卸载的方式。不能将 Node 测试当作实跑，不得在实跑绑定完整提交前送审就绪。
+
+## QQ 预审修订
+
+针对旧 head `7e9257d4afa70019a02fe8fb986a05f961cffb1d` 的审查：新增的 3 项在修复前运行 5/8 通过、3 失败（userInfo 异常、未捕获异常、未处理拒绝）；修复后日志和票据专项 10/10 通过。`npm test` 163 项：157 通过、2 失败、4 跳过，失败仍是上述两项布局测试及相同 TypeError。打包 worker 的两项进程异常测试检查非零退出、无合成用户名、token 与安装路径。日志记在本机临时文件 `montclip-41-review-red.log`、`montclip-41-review-green.log`；含本机路径，不提交。
+
+静态搜索构建后的 `dist/montclip/node/app`：未发现 `process.stderr.write` 或 fd 2 直接写入。`desktop/fetch-ffmpeg.cjs:181` 的 `stdio: "inherit"` 在 `require.main === module` 的独立 CLI 分支；worker 通过 require 调用导出，并自行捕获 tar stderr，未发现该继承分支在插件安装流程可达。`analyze.js` 与 `mcp-server.js` 的直接 stdout 分别在 CLI/stdio 分支；未发现插件调用到这些分支。搜索并不能排除原生代码或未发现的间接路径。
+
+Deja 对旧 head 的实跑见 PR #63 评论 6757009882；她使用了带临时修改的构建，并非本次修订 head 的真实 Cindy 实跑，不替代合并前验收。

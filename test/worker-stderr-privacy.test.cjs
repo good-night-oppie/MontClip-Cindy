@@ -9,10 +9,10 @@ const nativeRequire = createRequire(worker);
 const redactor = require("../engine/problem-redact.js");
 
 // Exercise the real worker's logging setup without starting the engine or touching user data.
-function capture(redact = redactor.redactProblem, home = "D:\\人名\\data") {
+function capture(redact = redactor.redactProblem, home = "D:\\人名\\data", userInfo = () => ({ username: "测试用户" })) {
   let output = "";
-  const fakeProcess = { ...process, platform: "win32", env: { ...process.env, MONTCLIP_CINDY_APP: "synthetic-app" }, stderr: { write: s => { output += s; } } };
-  const fakeOs = { ...os, homedir: () => home, userInfo: () => ({ username: "测试用户" }) };
+  const fakeProcess = { ...process, platform: "win32", env: { ...process.env, MONTCLIP_CINDY_APP: "synthetic-app" }, stderr: { write: s => { output += s; } }, on: () => {} };
+  const fakeOs = { ...os, homedir: () => home, userInfo };
   const requireWorker = name => {
     if (name === "node:os") return fakeOs;
     if (name.endsWith("problem-redact.js")) { if (!redact) throw new Error("secret module path"); return { redactProblem: redact }; }
@@ -53,6 +53,30 @@ test("redactor and console conversion exceptions fail closed", () => {
   assert.match(c.output(), /LOG_REDACTION_FAILED/);
   assert.match(d.output(), /LOG_REDACTION_FAILED/);
 });
+test("unavailable userInfo does not disable home and secret redaction", () => {
+  const c = capture(redactor.redactProblem, "D:\\人名\\data", () => { throw new Error("account unavailable"); });
+  c.note({event:"error", message:"EPERM D:\\人名\\data\\bin.exe token=abc123"});
+  assert.match(c.output(), /EPERM/);
+  assert.doesNotMatch(c.output(), /人名|abc123|LOG_REDACTION_UNAVAILABLE/);
+});
+for (const kind of ["uncaughtException", "unhandledRejection"]) {
+  test(`packed worker redacts fatal ${kind} and exits nonzero`, { timeout: 15000 }, async t => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-fatal-"));
+    const preload = path.join(dir, "preload.cjs");
+    const message = sensitive + " " + path.join(root, "dist", "montclip", "node", "worker.cjs");
+    const operation = kind === "uncaughtException" ? "throw error" : "Promise.reject(error)";
+    fs.writeFileSync(preload, `setTimeout(() => { const error = Object.assign(new Error(${JSON.stringify(message)}), {code:'EPERM'}); ${operation}; }, 100);`);
+    const child = spawn(process.execPath, ["-r", preload, path.join(root, "dist", "montclip", "node", "worker.cjs")], { stdio:["pipe","pipe","pipe"], windowsHide:true });
+    let stderr = ""; child.stderr.on("data", c => { stderr += c; });
+    t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill(); fs.rmSync(dir, {recursive:true,force:true}); });
+    const code = await new Promise((resolve, reject) => { child.once("error", reject); child.once("exit", resolve); });
+    assert.notEqual(code, 0);
+    assert.match(stderr, /EPERM/);
+    assert.doesNotMatch(stderr, /测试用户|abc123|xyz\.123|AppData/);
+    assert.ok(!stderr.includes(root), "no installation path");
+    assert.match(stderr, new RegExp(kind));
+  });
+}
 test("packed worker redacts an actual method failure", { timeout: 15000 }, async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "montclip-stderr-"));
   const preload = path.join(dir, "preload.cjs");
