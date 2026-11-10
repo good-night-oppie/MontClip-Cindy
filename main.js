@@ -650,7 +650,9 @@ function statusCardHeight(s, editorOpen) {
   const note = asrNote(s.asr) ? Math.ceil(lines(asrNote(s.asr)) * 1.1) * 18 + 2 : 0;   // 12 px text: a few more characters a line
   // 〔下载听写程序和模型〕 under the 听写 value: two lines in the narrowest chat
   const asrButton = ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model) ? 52 : 0;
-  return Math.min(900, Math.max(120, 24 + 26 + rows + note + asrButton + (editorOpen ? 0 : 42) + 6));
+  // the sentence under 「没有打开」 (#65), 12 px like the 听写 note
+  const closedNote = editorOpen ? 0 : Math.ceil(lines(EDITOR_CLOSED.zh) * 1.1) * 18 + 2;
+  return Math.min(900, Math.max(120, 24 + 26 + rows + note + asrButton + closedNote + (editorOpen ? 0 : 42) + 6));
 }
 function statusCard(s, editorOpen) {
   // one width for every label (DD on #7: 「听写（语音转文字）」 was wider than the old min-width and pushed its value out of
@@ -663,7 +665,7 @@ function statusCard(s, editorOpen) {
   const ff = { downloaded: '已装好', changed: '文件被改过，建议重新安装', missing: '还没装（导出、降噪要用）' }[s.ffmpeg] || s.ffmpeg;
   return '<div style="padding:12px 14px;color:var(--text-primary,#1a1a1a);font:13px/1.5 system-ui,sans-serif">' +
     '<div style="font-weight:600;margin-bottom:6px">MontClip</div>' +
-    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开') + row('导出工具（ffmpeg）', ff) + row('MP4 导出', mp4Line(s.mp4)) +
+    row('项目', s.project || '—') + row('剪辑器', editorOpen ? '已在这个任务里打开' : '没有打开', editorOpen ? {} : { note: EDITOR_CLOSED.zh }) + row('导出工具（ffmpeg）', ff) + row('MP4 导出', mp4Line(s.mp4)) +
     // the 听写 line, with the way to the download on it while something is missing (also the way back after 〔先不用〕)
     row(asrText().label, asrLine(s.asr), { hint: asrText().hint, note: asrNote(s.asr), extra: ASR_DOWNLOAD_ENABLED && s.asr && !(s.asr.engine && s.asr.model)
       ? '<button data-ghost-action="install-asr" style="font:inherit;padding:1px 10px;border-radius:6px;border:1px solid var(--border,#ccc);background:transparent;color:inherit">' + esc(ASR_TEXT.zh.button) + '</button>' : '' }) +
@@ -753,6 +755,20 @@ const EDITOR_WHY = {
   TICKET_REFUSED_BY_ENGINE: 'An editor page asked for the ticket of this task and the engine refused to register one.',
 };
 
+/* The editor is not open in this task (MontClip-Cindy#65): what to do next, in JJ's final wording (issuecomment-6758888810),
+   word for word. zh is what the streamer reads on the status card and what the assistant may say to her; en is for the
+   assistant to relay. The code NO_EDITOR stays. Not said, on purpose (PG 6758902002): that nothing was lost. tools is for
+   the assistant only and is not part of JJ's sentence. */
+const EDITOR_CLOSED = {
+  zh: '剪辑器现在没打开，撤销、预览、定位这些暂时用不了。请在电脑上的 Cindy 窗口里点开这个任务，剪辑器就会连上。剪的时候先别切到别的任务，切走它会断开。',
+  en: "The editor is not open right now, so undo, preview and locate can't run yet. Ask the streamer to open this task in the Cindy window on her computer; the editor connects once it is showing. While editing, she should stay on this task, because switching to another task disconnects it.",
+  tools: 'montclip_open_task_view asks Cindy to open the editor in this task. Without the editor, go back to an earlier version with fablecut_versions.',
+};
+/** An editor command's answer, with the sentence added when the reason is that no editor is open. */
+function withEditorHint(r) {
+  return r && r.code === 'NO_EDITOR' ? { ...r, note: EDITOR_CLOSED.en, sayToStreamer: EDITOR_CLOSED.zh, tools: EDITOR_CLOSED.tools } : r;
+}
+
 const HANDLERS = {
   async montclip_status(args, msg) {
     const bound = await forTask(msg).catch(() => null);
@@ -771,7 +787,7 @@ const HANDLERS = {
       note: asr.engine && asr.model ? 'fablecut_transcribe works here.' : 'Not installed here: fablecut_transcribe will say so. MontClip never fetches the engine or the model by itself; do not try to.' } : null,
       editorTab: editor && editor.status === 200 ? editor
       : { open: false, ...(why ? { why: { ...why, meaning: EDITOR_WHY[why.code] || null } } : {}),
-        note: 'The editor is not open in this task: montclip_open_task_view opens it. Undo / redo need it; without it, go back with fablecut_versions.' } };
+        note: EDITOR_CLOSED.en, sayToStreamer: EDITOR_CLOSED.zh, tools: EDITOR_CLOSED.tools } };
   },
   async list_tools(args) {
     const tools = await engineTools();
@@ -800,9 +816,9 @@ const HANDLERS = {
       return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
   },
-  async montclip_undo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'undo' }); },
-  async montclip_redo(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'redo' }); },
-  async montclip_seek(args, msg) { await forTask(msg); return node('montclip/ui', { session: taskOf(msg), cmd: 'seek', t: Number(args.t) }); },
+  async montclip_undo(args, msg) { await forTask(msg); return withEditorHint(await node('montclip/ui', { session: taskOf(msg), cmd: 'undo' })); },
+  async montclip_redo(args, msg) { await forTask(msg); return withEditorHint(await node('montclip/ui', { session: taskOf(msg), cmd: 'redo' })); },
+  async montclip_seek(args, msg) { await forTask(msg); return withEditorHint(await node('montclip/ui', { session: taskOf(msg), cmd: 'seek', t: Number(args.t) })); },
   /* Export, and save the file into a folder the user picks in the system dialog (folder:"default" keeps it in the
      MontClip data folder's exports/). It answers as soon as the export has started, with its job; progress shows on
      this call's card, and montclip_export {job} reports it (see followExport). Asked again while this task's export is
