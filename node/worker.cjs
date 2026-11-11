@@ -199,15 +199,20 @@ let projectSwitchTasks;
 async function taskProjects(p) {
   await start();
   const { taskId, idempotency_key, wait_ms, ...args } = p.arguments || {};
-  if (!taskId && idempotency_key == null) return { text: await binder.projects(p.session, args) };
+  if (!taskId && idempotency_key == null) return binder.projects(p.session, args);
+  let projectSwitched;
   projectSwitchTasks ||= require(path.join(APP, 'tool-tasks.js')).createToolTasks({
     dir: path.join(DATA, 'cindy-project-tasks'), dataDir: DATA,
   });
   const receipt = await projectSwitchTasks.call({ scope: JSON.stringify([p.session, 'projects']),
     name: 'fablecut_projects', args, key: idempotency_key, taskId, wait_ms, waitForCompletion: true },
-  () => binder.projects(p.session, args));
+  async () => {
+    const result = await binder.projects(p.session, args);
+    projectSwitched = result.projectSwitched;
+    return result.text; // only prose is durable; replay must never re-emit a switch
+  });
   // A replay/query is historical evidence; it must not switch the task back.
-  return { text: JSON.stringify(receipt) };
+  return { text: JSON.stringify(receipt), ...(projectSwitched ? { projectSwitched } : {}) };
 }
 
 const METHODS = {
@@ -435,7 +440,7 @@ const METHODS = {
       throw Object.assign(new Error((r.body && r.body.error) || "the engine refused a task ticket"), { code });
     }
     editorTrace.issued(session);
-    return { ticket: r.body.ticket, expiresInMs: r.body.expiresInMs };
+    return { ticket: r.body.ticket, expiresInMs: r.body.expiresInMs, project: b.project };
   },
   /* #56: why no editor is bound to this task, as far as the worker can see — whether its page ever asked for a
      ticket. Whether the page then traded it is the engine's to know; it does not say yet. */
