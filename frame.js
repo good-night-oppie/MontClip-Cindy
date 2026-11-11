@@ -61,18 +61,23 @@ function copyButton(box, problem) {
   function ask(type, extra) {
     const reqId = type + '-' + Math.random().toString(36).slice(2);
     return new Promise((resolve) => {
-      let timer = null;
+      let timer = null, deadline = null;
       const onMsg = (e) => {
         const m = e.data || {};
         if (m.reqId !== reqId || !m.answer) return;
         channel.removeEventListener('message', onMsg);
         clearInterval(timer);
+        clearTimeout(deadline);
         resolve(m);
       };
       channel.addEventListener('message', onMsg);
       const send = () => channel.postMessage(Object.assign({ reqId, type }, extra || {}));
       send();
       timer = setInterval(send, 700);   // the logic page may still be waking: repeat until it answers
+      if (type === 'editor-ticket') deadline = setTimeout(() => {
+        channel.removeEventListener('message', onMsg); clearInterval(timer);
+        resolve({ error: 'Ticket request timed out.', code: 'TASK_TICKET_TIMEOUT' });
+      }, 15000);
     });
   }
 
@@ -94,8 +99,10 @@ function copyButton(box, problem) {
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sendTheme);
 
   let url = null, frame = null, placing = 0;
+  let project = null, placedProject = null, pendingProject = null, binding = 0;
   async function place(next) {
     const seq = ++placing;
+    pendingProject = project;
     url = next;
     if (!frame) {
       frame = document.createElement('iframe');
@@ -112,10 +119,17 @@ function copyButton(box, problem) {
     if (session) {
       const t = await ask('editor-ticket', { session });
       if (seq !== placing) return;
-      if (t && t.ticket) ticket = t.ticket;
+      if (!t || !t.ticket) {
+        const f = failureText('MontClip 没能连接这个任务的剪辑器。', t && t.error, t && t.code);
+        show(f.text, true, false, f.problem);
+        return; // retain pendingProject: no automatic retry loop for this target
+      }
+      ticket = t.ticket;
+      project = t.project;
     }
     if (seq !== placing) return;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
+    placedProject = project; pendingProject = null;
   }
   /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
      host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
@@ -125,22 +139,36 @@ function copyButton(box, problem) {
     let origin = null;
     try { origin = new URL(url).origin; } catch (err) { return; }
     if (e.origin !== origin) return;
+    const seq = placing;
     const t = await ask('editor-ticket', { session });
+    if (seq !== placing) return;
     if (t && t.ticket) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
   });
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
-  async function bind() {
+  async function bind(replace = false) {
     if (view !== 'task' || !session) return true;
+    const seq = ++binding;
     const b = await ask('bind', { session });
+    if (seq !== binding) return false;
     if (b.error) {
       if (inUse(b)) show(b.error, true, true);
       else { const f = failureText('MontClip 没能打开这个任务的项目。', b.error, b.code); show(f.text, true, false, f.problem); }
       return false;
     }
+    project = b.project;
+    if (replace && pendingProject && pendingProject !== project) { ++placing; pendingProject = null; }
+    if (replace && url && project !== placedProject && project !== pendingProject) place(url);
     return true;
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(true); });
+  channel.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type !== 'task-project-switched' || view !== 'task' || !session || m.session !== session || !url ||
+        !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject)) return;
+    ++placing; pendingProject = null; // an older in-flight ticket cannot place over the new project
+    bind(true); // read the authoritative map, including if notifications arrived out of order
+  });
 
   /* First use: export and noise reduction need ffmpeg. The banner asks once (以后再说 is remembered); the download
      starts only from its button — the user's own click — or when the user asks the chat (montclip_install_ffmpeg). */
