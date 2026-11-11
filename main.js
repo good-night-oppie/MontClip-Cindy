@@ -811,7 +811,12 @@ const HANDLERS = {
     // with the job at once, and fablecut_export {job} reports it (P2, as montclip_export does)
     if (name === 'fablecut_export' && call.job == null && call.cancel == null) call = Object.assign({}, call, { wait: false });
     try {
-      return await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
+      const result = await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
+      if (name === 'fablecut_projects' && result.projectSwitched && taskOf(msg)) {
+        channel.postMessage({ type: 'task-project-switched', session: taskOf(msg), project: result.projectSwitched });
+      }
+      const { projectSwitched, ...answer } = result;
+      return answer;
     } catch (e) {
       return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
