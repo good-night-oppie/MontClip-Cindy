@@ -83,7 +83,7 @@ function createBinder({ file, api, name = (session) => "任务 " + session.slice
       return run;
     },
     // Called inside the worker operation queue. Keep bind and rebind in the same
-    // binder queue too. GUI/SSE tickets are NOT re-claimed here (#56/#2).
+    // binder queue too. Only the open task frame may request a fresh GUI ticket.
     projects(session, args) {
       const run = chain.then(async () => {
         if (typeof session !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(session)) throw new Error('a task session is required');
@@ -108,8 +108,9 @@ function createBinder({ file, api, name = (session) => "任务 " + session.slice
             write(current);
           }
           const p = out.project;
-          return `${switching ? 'Opened ' : ''}${out.id} ${JSON.stringify(p.name)}${switching ? ' (OPEN)' : ''} — ${p.clips} clip(s), ${p.media} media. ` +
-            (switching ? 'This task now uses this project. Re-read it before editing.' : 'The task binding is unchanged.');
+          return { text: `${switching ? 'Opened ' : ''}${out.id} ${JSON.stringify(p.name)}${switching ? ' (OPEN)' : ''} — ${p.clips} clip(s), ${p.media} media. ` +
+            (switching ? 'This task now uses this project. Re-read it before editing.' : 'The task binding is unchanged.'),
+          ...(switching ? { projectSwitched: out.id } : {}) };
         } catch (error) {
           // A created project may remain on disk. Never repeat a keyed mutation to
           // repair a failed binding write; its durable failed receipt explains it.
