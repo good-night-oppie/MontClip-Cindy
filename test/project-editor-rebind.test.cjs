@@ -192,4 +192,5 @@ test('#43 failed replacement ticket shows bounded error without navigating unbou
   const n = f.tickets.length; await f.call({ action: 'new' }); await until(() => f.tickets.length > n);
   await tick(); p.notify(f.broadcasts.at(-1)); p.visible(); await tick();
   a.equal(p.loads.length, 1); a.equal(f.tickets.length, n + 1); a.equal(p.status.className, 'error');
+  a.equal(p.status.textContent, 'MontClip 没能连接这个任务的剪辑器。');
 });
