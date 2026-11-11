@@ -5,13 +5,12 @@ const COPY = {   // JJ v2, finalised (the same words as the editor's, ui-prefere
   button: '复制问题信息', note: '复制的内容不含你的文件夹路径、密钥和观众信息。',
   done: '已经复制好了，粘贴到发给我们的消息里就行。', failed: '这次没能复制，再点一次按钮试试。',
 };
-function failureText(head, error, code) {
+function failureText(head, error, code, headOnly = false) {
   const raw = error == null ? '' : String(error).trim();
-  if (!raw) return { text: head + '关掉这个页签再打开试试。', problem: null };
+  if (!raw) return { text: headOnly ? head : head + '关掉这个页签再打开试试。', problem: null };
   const problem = { code: code || 'UNKNOWN', error: raw };
   console.warn(window.MontClipProblem ? MontClipProblem.logLine(problem) : '[MontClip] ' + raw);   // the whole of it: the log
-  // draft, waiting for JJ: #112's sentence, with the copy button in place of the raw line
-  return { text: head + '关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。', problem };
+  return { text: headOnly ? head : head + '关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。', problem };
 }
 /** Put the copy button (and its small print) into `box`: a click copies the scrubbed line, never shown on the page. */
 function copyButton(box, problem) {
@@ -120,7 +119,7 @@ function copyButton(box, problem) {
       const t = await ask('editor-ticket', { session });
       if (seq !== placing) return;
       if (!t || !t.ticket) {
-        const f = failureText('MontClip 没能连接这个任务的剪辑器。', t && t.error, t && t.code);
+        const f = failureText('MontClip 没能连接这个任务的剪辑器。', t && t.error, t && t.code, true);
         show(f.text, true, false, f.problem);
         return; // retain pendingProject: no automatic retry loop for this target
       }
