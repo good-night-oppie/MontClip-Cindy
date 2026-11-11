@@ -5,12 +5,13 @@ const COPY = {   // JJ v2, finalised (the same words as the editor's, ui-prefere
   button: '复制问题信息', note: '复制的内容不含你的文件夹路径、密钥和观众信息。',
   done: '已经复制好了，粘贴到发给我们的消息里就行。', failed: '这次没能复制，再点一次按钮试试。',
 };
-function failureText(head, error, code, headOnly = false) {
+function failureText(head, error, code) {
   const raw = error == null ? '' : String(error).trim();
-  if (!raw) return { text: headOnly ? head : head + '关掉这个页签再打开试试。', problem: null };
+  if (!raw) return { text: head + '关掉这个页签再打开试试。', problem: null };
   const problem = { code: code || 'UNKNOWN', error: raw };
   console.warn(window.MontClipProblem ? MontClipProblem.logLine(problem) : '[MontClip] ' + raw);   // the whole of it: the log
-  return { text: headOnly ? head : head + '关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。', problem };
+  // draft, waiting for JJ: #112's sentence, with the copy button in place of the raw line
+  return { text: head + '关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。', problem };
 }
 /** Put the copy button (and its small print) into `box`: a click copies the scrubbed line, never shown on the page. */
 function copyButton(box, problem) {
@@ -99,18 +100,15 @@ function copyButton(box, problem) {
 
   let url = null, frame = null, placing = 0;
   let project = null, placedProject = null, pendingProject = null, binding = 0;
+  function dropFrame() {
+    ++placing; // cancel any ticket request that could resurrect the discarded editor
+    if (frame) frame.remove();
+    frame = null; placedProject = null;
+  }
   async function place(next) {
     const seq = ++placing;
     pendingProject = project;
     url = next;
-    if (!frame) {
-      frame = document.createElement('iframe');
-      frame.className = 'engine';
-      frame.title = 'MontClip';
-      frame.allow = 'autoplay; fullscreen; clipboard-write';
-      frame.addEventListener('load', () => { status.hidden = true; sent = null; sendTheme(); });
-      document.body.appendChild(frame);
-    }
     /* A fresh one-time ticket for every placement (MontClip#251 items 2-3, #260 item 4): the editor trades it
        for its task binding, the side panel for its channel suffix. The session id itself never goes in the
        address any more, and a ticket is never reused across placements. */
@@ -119,14 +117,27 @@ function copyButton(box, problem) {
       const t = await ask('editor-ticket', { session });
       if (seq !== placing) return;
       if (!t || !t.ticket) {
-        const f = failureText('MontClip 没能连接这个任务的剪辑器。', t && t.error, t && t.code, true);
-        show(f.text, true, false, f.problem);
+        // JJ's confirmed head only: closing a page with pending edits is not verified safe.
+        const head = 'MontClip 没能连接这个任务的剪辑器。';
+        const f = failureText(head, t && t.error, t && t.code);
+        dropFrame();
+        show(head, true, false, f.problem);
+        status.tabIndex = -1; status.focus();
         return; // retain pendingProject: no automatic retry loop for this target
       }
       ticket = t.ticket;
       project = t.project;
     }
     if (seq !== placing) return;
+    if (!frame) {
+      frame = document.createElement('iframe');
+      frame.className = 'engine';
+      frame.title = 'MontClip';
+      frame.allow = 'autoplay; fullscreen; clipboard-write';
+      const placedFrame = frame;
+      frame.addEventListener('load', () => { if (frame !== placedFrame || pendingProject) return; status.hidden = true; sent = null; sendTheme(); });
+      document.body.appendChild(frame);
+    }
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
     placedProject = project; pendingProject = null;
   }
@@ -135,13 +146,14 @@ function copyButton(box, problem) {
      gets an answer; the ticket goes back to that window only. */
   window.addEventListener('message', async (e) => {
     if (!frame || !url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
+    if (!placedProject || pendingProject || !status.hidden) return;
     let origin = null;
     try { origin = new URL(url).origin; } catch (err) { return; }
     if (e.origin !== origin) return;
     const seq = placing;
     const t = await ask('editor-ticket', { session });
-    if (seq !== placing) return;
-    if (t && t.ticket) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
+    if (seq !== placing || !frame || e.source !== frame.contentWindow || pendingProject || !status.hidden) return;
+    if (t && t.ticket && t.project === placedProject) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
   });
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
@@ -151,8 +163,10 @@ function copyButton(box, problem) {
     const b = await ask('bind', { session });
     if (seq !== binding) return false;
     if (b.error) {
+      dropFrame();
       if (inUse(b)) show(b.error, true, true);
       else { const f = failureText('MontClip 没能打开这个任务的项目。', b.error, b.code); show(f.text, true, false, f.problem); }
+      status.tabIndex = -1; status.focus();
       return false;
     }
     project = b.project;
