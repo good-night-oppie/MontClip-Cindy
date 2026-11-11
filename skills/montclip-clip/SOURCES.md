@@ -79,7 +79,7 @@
 
 - 多音轨选择（#177，合并提交 `982b1312`）：`mcp-tools.js` 第 206–216 行是 `fablecut_audio_track` 的原文参数与约束；`mcp-server.js` 的 `audioTrackTool` 实现列表、`listen` 每轨 6 秒、0 起编号、一次撤销和重跑分析，`audioWindow` 的分析 / 导出分轨保证导出仍读 track 0。`media-lib.js` 的 `audioTrackOf` 默认 0；`app.js` 第 3414、3518–3600 行是右键〔选音轨…〕、逐条〔试听〕和换轨，`ui-preferences.js` 第 428–448 行是「主播的声音在哪条轨」「第 {n} 轨」「试听」等界面原文。多音轨 MP4 保留全部轨道；技能里只写主播确认后才换轨。
 - 找歌没达标的说法（0.12 / 0.38，门槛 0.6）出自 `mcp-tools.js` 里 `fablecut_songs` 的描述，以及 `auto-slices.js` 的 `SONG_GATE` / `SONG_MEASURED`。
-- 隐私覆盖做法（#202，合并提交 `ecb2afde`）：`CLAUDE.md` Masks 的不透明覆盖块说明，以及 `reference/privacy-cover.md` 的本仓合成逐帧验证。旧版调节层模糊、模糊副本与追踪配方已撤回作为隐私推荐；模糊滑块上限不代表安全阈值。本轮保留 main 的撤回结论，没有恢复 #163 / #186 的未合并做法。
+- 隐私覆盖做法（#202，合并提交 `ecb2afde`）：`CLAUDE.md` Masks 的不透明覆盖块说明，以及 `dev/reference/privacy-cover.md` 的本仓合成逐帧验证。旧版调节层模糊、模糊副本与追踪配方已撤回作为隐私推荐；模糊滑块上限不代表安全阈值。本轮保留 main 的撤回结论，没有恢复 #163 / #186 的未合并做法。
 - 长录像听写与不可用文案（#165，合并提交 `29ae0939`）：`mcp-server.js` 第 667 行 `LONG_FILE_S = 600`（>10 分钟且片段窗口 < 全片一半时只读片段窗口，`pad` 默认 1.5 秒，`transcribe.js` 第 144 行）；`/api/asr/transcribe` 与 `/api/transcribe/request` 接受 `ranges`（1–500 段，`server.js` 第 1968、1176 行）；听写缺失的三种 code 与定稿文案在 `asr-status.js`（「还没装听写模型（约 240 MB）」「这台电脑上的 MontClip 还没有听写程序…剪辑、导出照常能用」，模型大小按 1,000,000 字节/MB 取整到 10），离开本机的错误一律脱路径（`hidePaths`）；server 顶层不再被听写异常打崩（`server.js` 第 810 行附近）。
 - AI 抠像（#154，合并提交 `aba1d4c8`）：同意流程与文案在 `app.js` 第 13580–13621 行与 `ui-preferences.js` 第 266–279 行（「要联网下载 AI 抠像吗？」「只下载，不上传…录像、字幕和项目都不会发出去」「边播边录这种导出方式不支持 AI 抠像…」）；MediaPipe 资产钉死与字节校验在 `bgremove-assets.js`（9 个文件精确字节数 + SHA-256）；导出/合成完整性拒绝在 `noteExportBgRemove`。Whisper 已不在听写路径（听写只走本机 Paraformer）。
 - 窄窗口素材面板（#162，合并提交 `59ba9890`）：≤560 px 时素材面板占满宽度，顶栏「素材」按钮变「返回播放器」，双击载入 Source 素材自动收起面板（`app.js` 第 43–58 行、`ui-preferences.js` 第 359–362 行、`style.css` 第 4768 行起）。
@@ -133,7 +133,7 @@
 
 **本轮 MontClip 新增证据（对照 main `7e793990a9ca`）**：
 - README 首屏重写（#268 的后续，合并提交 `43c2a551`，含 `2cdd1310` / `1b9ac0f5` / `dbf9246a` / `c1c4d3ea` / `9f926394` / `e976dad1` / `9dee024f`）：`README.md` 与 `docs/i18n/README.zh-CN.md` 改成先讲能做什么、再讲从源码跑；README 原来的技术部分原样搬进新的 `docs/technical-reference.md`（内容未改，只换位置，第 1–40 行）。首屏把「逐句保留 / 导出 SRT 字幕 / 可选 AI 助手」标成「仍在核实」，并写明「现在能用的就是导入和导出 MP4」。这是公开措辞，代码能力、按钮和工具都没变，操作步骤照旧，不进 SKILL 正文；但这三项也别对主播说成「已验收」。
-- SOP v4 修订候选稿（#279，合并提交 `91fa1888`，含 `26bcdc56` / `ec4c810c`）只往 `docs/decisions/` 加一份流程候选稿；执行前的检查与证据清单（#287，合并提交 `7e793990`，含 `c75b180f`）只往 `reference/` 加一份清单。两者都不改剪辑器、工具和界面，不进 SKILL 正文。
+- SOP v4 修订候选稿（#279，合并提交 `91fa1888`，含 `26bcdc56` / `ec4c810c`）只往 `docs/decisions/` 加一份流程候选稿；执行前的检查与证据清单（#287，合并提交 `7e793990`，含 `c75b180f`）只往 `reference/`（后由 #296 改名为 `dev/reference/`）加一份清单。两者都不改剪辑器、工具和界面，不进 SKILL 正文。
 
 **上一轮 MontClip 新增证据（对照 main `fb1311758be7`）**：
 - #276（合并提交 `4e50c768`）只新增和接入无头浏览器测试进程清理，`test/browser-procs.js`、`test/browser-procs.test.js`、`test/browser-contrast.js`、`test/embed-task-browser.test.js` 均属测试基建，不进 SKILL 正文。
@@ -143,6 +143,11 @@
 **上一轮 MontClip 新增证据（以下行号以 MontClip main `197de675` 为准）**：
 - Fast 导出放后台（#264，合并提交 `197de675`，含 `dbae3415` / `0cfea4d3` / `69e622d0` / `342c4622` / `133c0081` / `25015bdf`）：新文件 `bg-export.js`——第 16–20 行 `ENGINES` 只有 `fast` 可后台（`webcodecs` / `realtime` 不行），第 24–33 行 `blocker`（打开复合片段 `COMP_OPEN`、用 AI 抠像 `BG_REMOVE`、隐藏页起不来 `NO_WORKER` 时留在当前窗口），第 40–46 行 `snapshot` 是时间线的深拷贝。`app.js` 第 21588–21695 行是装配：隐藏 iframe `?exportWorker=<id>`、顶栏按钮变「导出中 {pct}%」/「准备导出…」、进导出队列、〔收起，接着剪〕关窗（Esc / 点窗外同效）；第 21698–21725 行 `finishBgExport`：完成时若时间线又改过，用 `own.bg-export-version-changed`（「这个文件是你 {time} 点「导出」时的样子，之后的改动不在里面。想带上新改动，请再导出一次。」），取消说「导出已取消，没有留下文件。」。JJ 定稿文案在 `ui-terms.js` 第 293–297 行（`engine-fast-note` 与三种 `-here`）和 `ui-preferences.js` 第 231–240 行（`bg-keep-editing` 〔收起，接着剪〕、`bg-progress-note`、`bg-export-btn`、`bg-export-preparing`、`bg-export-busy`、`bg-export-cancelled`、`bg-export-done`、`bg-export-version-changed`）。桌面端 `desktop/main.js` 只允许编辑器 frame 自己的 origin。测试：`test/bg-export.test.js`、`desktop/background-export-smoke.cjs`（真实输入事件，离屏 Electron）。一次只跑一个后台导出（`bg-export.js` 第 76–140 行 `createController`）。
 - 同步 PR：#261 是本任务上一轮 skill 同步，不算实质增量。
+
+**本轮 MontClip 新增证据（对照 main `5892189534d6`）**：
+- 仓库目录整理（#296，合并提交 `58921895`，含 `3155e116` / `b25fc8a7` / `c79d9566` / `b260415c` / `33fb699f`）：`3155e116` 把 `real-tests/` 改到 `dev/real-tests/`、`reference/` 改到 `dev/reference/`（`git show origin/main:dev/reference/privacy-cover.md` 可读出迁移后的那份），`b25fc8a7` 同步根目录 `app.js` / `auto-slices.js` 注释里的路径。剪辑器、工具、按钮、参数和默认值都没变，SKILL 正文只跟着改了一处证据路径（见文中 §4 打码里的 `dev/reference/privacy-cover.md`，main 已在 `3155e116` 里改好，本轮核对一致）。
+- 提交身份检查与 PR SOP 路径表（#292，合并提交 `445b2531`，含 `a943a327` / `9e6ae119` / `53368f86`；#281 的 `#296` 分支里 `33fb699f` / `b260415c` 补 `ci-check` 身份门禁与浅克隆兼容）：只改 `scripts/pr-sop/*`、`.github/workflows/pr-sop.yml`、`.github/scripts/ci-check.js` 和对应测试，属协作流程，不进 SKILL 正文。
+- 本轮自己的 skill 同步 PR 不算增量。
 
 **本轮 MontClip-Cindy 新增证据（以下行号以 MontClip-Cindy main `8af4d0cdb918` 为准）**：
 - worker 日志与崩溃输出脱敏（#63，合并提交 `8af4d0cd`，代码提交 `7e9257d4` / `b29862da`）：`node/worker.cjs` 第 24–37 行把 `console.log` / `info` / `debug` / `warn` / `error` 全部改走引擎自带的 `problem-redact.js`（`redactProblem`，参数带家目录、平台、用户名），加载不到脱敏函数时只写固定事件 `log-redaction-unavailable` 加 `LOG_REDACTION_UNAVAILABLE`，不写原文；第 96–103 行 `note` 先序列化再脱敏、再确认还是合法 JSON 才写，失败写 `LOG_REDACTION_FAILED`；第 105–124 行接管 `uncaughtException` / `unhandledRejection`，写一条脱敏后的 note 再退出（最多等 1 秒）。不新增文件日志，不改工具、按钮、错误码，也不改对主播说的话。
