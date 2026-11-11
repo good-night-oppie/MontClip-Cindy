@@ -75,7 +75,15 @@ async function setup(t) {
   const pages = [], broadcasts = [], tickets = [];
   function page(session, view = 'task') {
     const listeners = [], visibility = [], loads = [], errors = [], timers = new Map();
-    const status = { hidden: false, textContent: '', append() {} };
+    function element(tagName) {
+      return { tagName, children: [], text: '', hidden: false,
+        set textContent(value) { this.text = value; this.children = []; },
+        get textContent() { return this.text + this.children.map(x => x.textContent).join(''); },
+        get firstChild() { return this.text ? { textContent: this.text } : this.children[0]; },
+        append(...nodes) { this.children.push(...nodes); }, addEventListener() {}, focus() {},
+      };
+    }
+    const status = element('status'), messages = [];
     let iframe, blocked = false, release, muted = false;
     const send = m => listeners.forEach(fn => fn({ data: m }));
     class Channel {
@@ -83,29 +91,38 @@ async function setup(t) {
       removeEventListener(_, fn) { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }
       async postMessage(m) {
         let result;
-        if (m.type === 'bind') result = await rpc('montclip/bind', { session });
+        if (m.type === 'bind') result = p.failBind ? { error: 'synthetic bind refusal', code: 'BIND_FAILED' } : await rpc('montclip/bind', { session });
         else if (m.type === 'editor') result = start;
         else if (m.type === 'editor-ticket') {
           result = await rpc('montclip/editor-ticket', { session }); tickets.push(result.ticket);
           if (blocked) { blocked = false; await new Promise(r => { release = r; }); }
+          if (p.ticketProject) result.project = p.ticketProject;
+          if (p.omitTicketProject) delete result.project;
           if (p.failTicket) result = { error: 'synthetic ticket refusal', code: 'TASK_TICKET_REFUSED' };
         } else result = { supported: false };
         send({ ...result, reqId: m.reqId, answer: true });
       }
     }
     const document = {
-      visibilityState: 'visible', documentElement: {}, body: { dataset: { view }, appendChild() {} },
+      visibilityState: 'visible', documentElement: {}, body: { dataset: { view }, children: [], appendChild(node) { this.children.push(node); node.parentNode = this; } },
       getElementById: id => id === 'status' ? status : null,
       addEventListener: (type, fn) => { if (type === 'visibilitychange') visibility.push(fn); },
       createElement: tag => {
-        if (tag !== 'iframe') return { addEventListener() {}, append() {} };
-        iframe = { contentWindow: { postMessage() {} }, addEventListener() {}, set src(url) {
-          const load = { url }; loads.push(load);
-          connect(url).then(conn => { load.conn = conn; }, e => errors.push(e));
-        } }; return iframe;
+        if (tag !== 'iframe') return element(tag);
+        const events = {};
+        const node = { removed: false, replies: [], contentWindow: { postMessage: m => node.replies.push(m) },
+          addEventListener(type, fn) { events[type] = fn; },
+          remove() { node.removed = true; node.conn?.controller.abort(); if (node.parentNode) node.parentNode.children = node.parentNode.children.filter(x => x !== node); node.parentNode = null; },
+          set src(url) {
+            const load = { url }; loads.push(load);
+            connect(url).then(conn => { load.conn = node.conn = conn; events.load?.(); }, e => errors.push(e));
+          },
+        }; iframe = node; return node;
       },
     };
-    const p = { session, loads, errors, status, failTicket: false,
+    const p = { session, loads, errors, status, failTicket: false, failBind: false,
+      frame: () => iframe, mounted: () => document.body.children,
+      needTicket: node => Promise.all(messages.map(fn => fn({ source: node.contentWindow, origin: start.origin, data: { type: 'montclip-need-ticket' } }))),
       notify: m => { if (!muted) send(m); }, mute: x => { muted = x; },
       visible: () => visibility.forEach(fn => fn()), block: () => { blocked = true; },
       release: () => release?.(), waiting: () => !!release,
@@ -114,7 +131,7 @@ async function setup(t) {
     pages.push(p);
     vm.runInNewContext(source('frame.js'), {
       document, location: { search: '?session=' + session }, BroadcastChannel: Channel,
-      window: { addEventListener() {} }, URL, URLSearchParams,
+      window: { addEventListener: (type, fn) => { if (type === 'message') messages.push(fn); } }, URL, URLSearchParams,
       getComputedStyle: () => ({ colorScheme: 'light' }), matchMedia: () => ({ addEventListener() {} }),
       fetch: async () => ({}), localStorage: { getItem: () => '1' }, console: { warn: x => errors.push(x) },
       setInterval: fn => { const id = Symbol(); timers.set(id, fn); return id; }, clearInterval: id => timers.delete(id),
@@ -192,5 +209,121 @@ test('#43 failed replacement ticket shows bounded error without navigating unbou
   const n = f.tickets.length; await f.call({ action: 'new' }); await until(() => f.tickets.length > n);
   await tick(); p.notify(f.broadcasts.at(-1)); p.visible(); await tick();
   a.equal(p.loads.length, 1); a.equal(f.tickets.length, n + 1); a.equal(p.status.className, 'error');
-  a.equal(p.status.textContent, 'MontClip 没能连接这个任务的剪辑器。');
+  a.equal(p.status.firstChild.textContent, 'MontClip 没能连接这个任务的剪辑器。');
+  a.ok(p.status.children.some(x => x.textContent === '复制问题信息'));
+  a.ok(!p.status.textContent.includes('关掉这个页签'));
 });
+
+for (const failure of ['failTicket', 'failBind']) test('#43 ' + failure + ' drops old frame and switching back recovers', async t => {
+  const f = await setup(t), p = f.page('taskA'); await f.ready(p);
+  const oldProject = (await f.rpc('montclip/bind', { session: 'taskA' })).project, oldFrame = p.frame();
+  p[failure] = true; await f.call({ action: 'new' }); await until(() => p.status.className === 'error');
+  a.equal(oldFrame.removed, true); a.equal(p.mounted().includes(oldFrame), false);
+  const n = f.tickets.length; p[failure] = false; await p.needTicket(oldFrame); await tick();
+  a.equal(f.tickets.length, n); a.equal(oldFrame.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+  p.errors.length = 0; await f.call({ action: 'open', id: oldProject });
+  await until(() => p.loads.length === 2); await f.ready(p);
+  a.equal(p.status.hidden, true); a.notEqual(p.frame(), oldFrame); a.deepEqual(p.mounted(), [p.frame()]);
+  a.equal((await f.rpc('montclip/ui', { session: 'taskA', cmd: 'undo' })).status, 200);
+});
+
+test('#43 pending replacement and mismatched ticket cannot feed the old window', async t => {
+  const f = await setup(t), p = f.page('taskA'); await f.ready(p);
+  const old = p.frame(); p.block(); await f.call({ action: 'new' }); await until(p.waiting);
+  const n = f.tickets.length; await p.needTicket(old); await tick();
+  a.equal(f.tickets.length, n); a.equal(old.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+  p.release(); await until(() => p.loads.length === 2); await f.ready(p);
+  const current = p.frame(); p.ticketProject = 'p_wrong_project'; await p.needTicket(current);
+  await until(() => f.tickets.length > n); await tick(); a.equal(current.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+  p.ticketProject = null; p.omitTicketProject = true; await p.needTicket(current);
+  a.equal(current.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+});
+
+test('#43 an in-flight reconnect cannot reply after replacement failure removes its window', async t => {
+  const f = await setup(t), p = f.page('taskA'); await f.ready(p);
+  const old = p.frame(); p.block(); const reconnect = p.needTicket(old); await until(p.waiting);
+  p.failTicket = true; await f.call({ action: 'new' }); await until(() => old.removed);
+  p.failTicket = false; p.release(); await reconnect;
+  a.equal(old.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+});
+
+test('#43 initial ticket failure does not mount an unbound iframe', async t => {
+  const f = await setup(t), p = f.page('taskA'); p.failTicket = true;
+  await until(() => p.status.className === 'error');
+  a.equal(p.frame(), undefined); a.equal(p.loads.length, 0);
+  a.equal(p.status.firstChild.textContent, 'MontClip 没能连接这个任务的剪辑器。');
+  a.ok(p.status.children.some(x => x.textContent === '复制问题信息'));
+});
+
+// Browser-only observations supplement the worker/SSE tests above.
+{
+'use strict';
+// Real browser DOM/focus/CSS with the actual frame source; only host replies and
+// iframe navigation are fixtures. This is not a Cindy real-window acceptance run.
+const test = require('node:test'), a = require('node:assert/strict');
+const fs = require('node:fs'), path = require('node:path'), os = require('node:os');
+const { execFileSync } = require('node:child_process');
+const root = path.resolve(__dirname, '..');
+const browser = [process.env.CHROME_BIN, '/usr/bin/google-chrome', '/usr/bin/chromium',
+  process.env.PROGRAMFILES && path.join(process.env.PROGRAMFILES, 'Google/Chrome/Application/chrome.exe'),
+  process.env['PROGRAMFILES(X86)'] && path.join(process.env['PROGRAMFILES(X86)'], 'Microsoft/Edge/Application/msedge.exe')]
+  .find(p => p && fs.existsSync(p));
+
+test('#43 ticket failure discards old editor and removes keyboard focus; recovery shows new editor',
+  { skip: !browser && 'Chrome/Edge unavailable' }, t => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mc43-frame-failure-'));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }));
+    const source = fs.readFileSync(path.join(root, 'frame.js'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'frame.css'), 'utf8');
+    const fixture = `
+      let project='P1', refuse=false, channel, navigations=0;
+      window.fetch=async()=>({});
+      window.BroadcastChannel=class {
+        constructor(){channel=this;this.listeners=[];}
+        addEventListener(_,fn){this.listeners.push(fn);}
+        removeEventListener(_,fn){this.listeners=this.listeners.filter(x=>x!==fn);}
+        emit(data){[...this.listeners].forEach(fn=>fn({data}));}
+        postMessage(m){const r=m.type==='bind'?{project}:m.type==='editor'?{url:'http://127.0.0.1/'}:
+          m.type==='editor-ticket'?(refuse?{error:'synthetic refusal',code:'TASK_TICKET_REFUSED'}:{ticket:'fixture',project}):{supported:false};
+          queueMicrotask(()=>this.emit({...r,answer:true,reqId:m.reqId}));}
+      };
+      Object.defineProperty(HTMLIFrameElement.prototype,'src',{set(value){navigations++;
+        this.srcdoc='<button>synthetic editor '+project+'</button>';}});
+      const result={};
+      const until=async fn=>{for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,10));}throw Error('fixture timeout');};
+      async function check(){try{
+        const status=document.getElementById('status');
+        await until(()=>document.querySelector('iframe')&&status.hidden);
+        const frame=document.querySelector('iframe'); frame.focus();
+        result.focusBefore=document.activeElement===frame;
+        project='P2';refuse=true;channel.emit({type:'task-project-switched',session:'taskA',project});
+        await until(()=>status.className==='error');
+        result.failed={removed:!frame.isConnected,active:document.activeElement.id,
+          text:status.firstChild.textContent,copy:!!status.querySelector('button.copy'),navigations};
+        frame.dispatchEvent(new Event('load'));
+        result.lateLoadKeepsError=!status.hidden;
+        result.unchangedError=failureText('MontClip 没能启动。','synthetic','TEST').text;
+        result.backgrounds=['#f7f7f5','#202020'].map(bg=>{document.documentElement.style.setProperty('--panel-bg',bg);return {status:getComputedStyle(status).backgroundColor,body:getComputedStyle(document.body).backgroundColor,z:getComputedStyle(status).zIndex};});
+        project='P1';refuse=false;channel.emit({type:'task-project-switched',session:'taskA',project});
+        await until(()=>navigations===2&&status.hidden);
+        result.recovered=document.querySelector('iframe')!==frame && getComputedStyle(document.querySelector('iframe')).display!=='none';
+      }catch(e){result.error=String(e);}document.body.setAttribute('data-result',JSON.stringify(result));}
+      setTimeout(check,0);
+    `;
+    const page = path.join(dir, 'fixture.html');
+    fs.writeFileSync(page, '<!doctype html><meta charset="utf-8"><style>'+css+'</style><body data-view="task"><div id="status"></div><script>'+fixture+'</script><script>'+source+'</script>');
+    const out = execFileSync(browser, ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run',
+      '--no-default-browser-check', '--user-data-dir='+path.join(dir,'profile'), '--virtual-time-budget=5000',
+      '--dump-dom', 'file:///'+page.replace(/\\/g,'/')+'?session=taskA'], {encoding:'utf8',timeout:30000,windowsHide:true});
+    const match=/data-result="([^"]*)"/.exec(out); a.ok(match, 'browser returned observations');
+    const r=JSON.parse(match[1].replace(/&quot;/g,'"').replace(/&amp;/g,'&'));
+    a.equal(r.error,undefined); a.equal(r.focusBefore,true);
+    a.equal(r.failed.text,'MontClip 没能连接这个任务的剪辑器。');
+    a.equal(r.failed.copy,true); a.equal(r.failed.navigations,1);
+    a.equal(r.failed.removed,true); a.equal(r.failed.active,'status');
+    for(const bg of r.backgrounds){a.equal(bg.status,bg.body);a.equal(bg.z,'2');}
+    a.equal(r.lateLoadKeepsError,true); a.equal(r.recovered,true);
+    a.equal(r.unchangedError,'MontClip 没能启动。关掉这个页签再打开试试；还不行，点「复制问题信息」发给我们。');
+  });
+
+}
