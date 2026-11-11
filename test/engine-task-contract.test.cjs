@@ -3,7 +3,7 @@
 // when polling/cancelling/delivering an export. No browser or user data needed.
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createExportJobs } = require("../dist/montclip/node/app/export-jobs.js");
+const { createExportJobs } = require("../dist/montclip/node/app/server/export-jobs.js");
 
 for (const surface of ["job", "ticket"]) {
   test(`packed engine preserves project/session on export ${surface}`, (t) => {
