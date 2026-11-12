@@ -173,7 +173,7 @@ function framePage(opts = {}) {
   const buttons = () => status.children.filter(c => c.tagName === 'button');
   const press = text => { const b = buttons().find(x => x.textContent === text); assert.ok(b, 'button ' + text + ' in: ' + status.textContent); b.click(); };
   const poll = () => { for (const fn of [...timers.values()]) fn(); };
-  return { status, note, loads, errors, press, poll, buttons, setActive: v => { active = v; },
+  return { status, note, noteClose, loads, errors, press, poll, buttons, setActive: v => { active = v; },
     setRestarted: v => { restarted = v; }, setEditorUrl: v => { editorUrl = v; } };
 }
 
@@ -254,4 +254,16 @@ test('#81 worker: the active-export query answers known:false before the engine 
   const a1 = await rpc('montclip/export-active');
   assert.equal(a1.known, false, 'the engine is not up: nothing is claimed');
   assert.equal(a1.active, null);
+});
+test('#81 C: 知道了 closes only the restart note; the page and the editor notice stay as they are', async () => {
+  const p = framePage({ active: 0 });
+  await until(() => p.loads.length === 1, 'the first load');
+  p.setRestarted(true); p.setEditorUrl('http://127.0.0.1:5001/'); p.poll();
+  await until(() => p.note.hidden === false, 'the restart note');
+  assert.equal(p.status.hidden, true, 'the editor page is showing under the note');
+  p.noteClose.click();
+  assert.equal(p.note.hidden, true, '知道了 closes the note');
+  assert.equal(p.status.hidden, true, 'and does not open or hide the page status');
+  assert.equal(p.loads.length, 2, 'and does not reload anything');
+  assert.ok(!/正在导出视频|导出已经结束/.test(p.status.textContent));
 });
