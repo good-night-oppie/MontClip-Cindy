@@ -92,7 +92,7 @@ async function setup(t) {
       async postMessage(m) {
         let result;
         if (m.type === 'bind') result = p.failBind ? { error: 'synthetic bind refusal', code: 'BIND_FAILED' } : await rpc('montclip/bind', { session });
-        else if (m.type === 'editor') result = p.editorSuffix ? { ...start, url: start.url + p.editorSuffix } : start;
+        else if (m.type === 'editor') result = p.editorAddress ? { ...start, url: p.editorAddress } : p.editorSuffix ? { ...start, url: start.url + p.editorSuffix } : start;
         else if (m.type === 'editor-ticket') {
           result = await rpc('montclip/editor-ticket', { session }); tickets.push(result.ticket);
           if (blocked) { blocked = false; await new Promise(r => { release = r; }); }
@@ -114,7 +114,7 @@ async function setup(t) {
           addEventListener(type, fn) { events[type] = fn; },
           remove() { node.removed = true; node.conn?.controller.abort(); if (node.parentNode) node.parentNode.children = node.parentNode.children.filter(x => x !== node); node.parentNode = null; },
           set src(url) {
-            const load = { url }; loads.push(load);
+            node.loadedUrl = url; const load = { url }; loads.push(load);
             connect(url).then(conn => { load.conn = node.conn = conn; events.load?.(); }, e => errors.push(e));
           },
         }; iframe = node; return node;
@@ -122,7 +122,7 @@ async function setup(t) {
     };
     const p = { session, loads, errors, status, failTicket: false, failBind: false,
       frame: () => iframe, mounted: () => document.body.children,
-      needTicket: node => Promise.all(messages.map(fn => fn({ source: node.contentWindow, origin: start.origin, data: { type: 'montclip-need-ticket' } }))),
+      needTicket: node => Promise.all(messages.map(fn => fn({ source: node.contentWindow, origin: new URL(node.loadedUrl).origin, data: { type: 'montclip-need-ticket' } }))),
       notify: m => { if (!muted) send(m); }, mute: x => { muted = x; },
       visible: () => visibility.forEach(fn => fn()), block: () => { blocked = true; },
       release: () => release?.(), waiting: () => !!release,
@@ -335,12 +335,30 @@ test('#43 ticket failure retains inert editor and moves focus; recovery keeps th
 }
 
 
-test('#76 same-project ticket failure resumes retained document and pending reconnect', async t => {
+
+test('#76 same-address bind failure reuses document and pending reconnect', async t => {
   const f = await setup(t), p = f.page('taskA'); await f.ready(p); const old = p.frame();
-  p.failTicket = true; p.editorSuffix = '&test=address-change'; await p.poll();
-  await until(() => p.status.className === 'error');
+  p.failBind = true; p.visible(); await until(() => p.status.className === 'error');
   const n = f.tickets.length; await p.needTicket(old); a.equal(f.tickets.length, n);
-  p.failTicket = false; p.visible();
+  p.failBind = false; p.visible();
   await until(() => old.replies.filter(m => m.type === 'montclip-host-ticket').length === 1);
   a.equal(p.status.hidden, true); a.equal(p.loads.length, 1); a.equal(p.frame(), old);
+});
+
+for (const recovery of ['visible', 'poll']) for (const address of ['query', 'port'])
+test('#77 changed '+address+' after failed ticket renavigates via '+recovery, async t => {
+  const f = await setup(t), p = f.page('taskA'); await f.ready(p); const old = p.frame();
+  p.failTicket = true;
+  if (address === 'query') p.editorSuffix = '&test=restart';
+  else p.editorAddress = 'http://127.0.0.1:9/?token=synthetic-restart';
+  await p.poll(); await until(() => p.status.className === 'error');
+  a.equal(p.loads.length, 1); a.equal(p.status.hidden, false); a.equal(old.inert, true);
+  const n = f.tickets.length; await p.needTicket(old); a.equal(f.tickets.length, n);
+  p.failTicket = false; p.errors.length = 0;
+  if (recovery === 'visible') p.visible(); else await p.poll();
+  await until(() => p.loads.length === 2); await f.ready(p);
+  a.equal(p.status.hidden, true); a.equal(p.frame().inert, false);
+  a.equal(old.replies.filter(m => m.type === 'montclip-host-ticket').length, 0);
+  if (address === 'query') a.equal(new URL(p.loads[1].url).searchParams.get('test'), 'restart');
+  else a.equal(new URL(p.loads[1].url).port, '9');
 });
