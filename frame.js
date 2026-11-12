@@ -91,14 +91,14 @@ function copyButton(box, problem) {
   let sent = null;
   function sendTheme() {
     const now = scheme();
-    if (!frame || !url || now === sent) return;
+    if (!frame || !placedUrl || now === sent) return;
     sent = now;
-    try { frame.contentWindow.postMessage({ type: 'montclip-host-theme', scheme: now }, new URL(url).origin); } catch (e) { }
+    try { frame.contentWindow.postMessage({ type: 'montclip-host-theme', scheme: now }, new URL(placedUrl).origin); } catch (e) { }
   }
   setInterval(sendTheme, 1500);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sendTheme);
 
-  let url = null, frame = null, placing = 0;
+  let url = null, placedUrl = null, frame = null, placing = 0;
   let project = null, placedProject = null, pendingProject = null, binding = 0;
   let suspended = false, deferredTicket = null;
   function suspendFrame() {
@@ -141,20 +141,20 @@ function copyButton(box, problem) {
     }
     suspended = false; deferredTicket = null; frame.inert = false;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
-    placedProject = project; pendingProject = null;
+    placedUrl = url; placedProject = project; pendingProject = null;
   }
   /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
      host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
      gets an answer; the ticket goes back to that window only. */
   async function reconnectFrame(e) {
-    if (!frame || !url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
+    if (!frame || !placedUrl || placedUrl !== url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
     let origin = null;
-    try { origin = new URL(url).origin; } catch (err) { return; }
+    try { origin = new URL(placedUrl).origin; } catch (err) { return; }
     if (e.origin !== origin) return;
     if (!placedProject || pendingProject || !status.hidden || suspended) { deferredTicket = e; return; }
     const seq = placing; deferredTicket = e;
     const t = await ask('editor-ticket', { session });
-    if (seq !== placing || !frame || e.source !== frame.contentWindow || pendingProject || !status.hidden) return;
+    if (seq !== placing || !frame || placedUrl !== url || e.source !== frame.contentWindow || pendingProject || !status.hidden) return;
     if (deferredTicket === e) deferredTicket = null;
     if (t && t.ticket && t.project === placedProject) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
   }
@@ -175,12 +175,12 @@ function copyButton(box, problem) {
     }
     project = b.project;
     if (replace && pendingProject && pendingProject !== project) { ++placing; pendingProject = null; }
-    if (replace && suspended && frame && project === placedProject) {
+    if (replace && suspended && frame && project === placedProject && url === placedUrl) {
       suspended = false; pendingProject = null; frame.inert = false; status.hidden = true;
       const request = deferredTicket; deferredTicket = null;
       if (request) reconnectFrame(request); // the retained editor may be waiting for its same-project SSE ticket
     }
-    if (replace && url && project !== placedProject && project !== pendingProject) place(url);
+    if (replace && url && ((project !== placedProject && project !== pendingProject) || (suspended && url !== placedUrl))) place(url);
     return true;
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(true); });
@@ -220,7 +220,7 @@ function copyButton(box, problem) {
       later.hidden = true;
       setTimeout(() => { banner.hidden = true; }, 4000);
       // the engine restarts to use it: follow it to its new address soon, not at the next minute
-      setTimeout(async () => { const b = await ask('editor'); if (b.url && at(b.url) !== url) place(at(b.url)); }, 1500);
+      setTimeout(async () => { const b = await ask('editor'); if (b.url && at(b.url) !== placedUrl) place(at(b.url)); }, 1500);
     } else {
       // why, in plain words; the raw error small below where the sentence points to it; 重试 where trying again can help
       const f = B.describe(m.code || (m.phase === 'cancelled' ? 'CANCELLED' : ''), m.message, { need: m.need });
@@ -290,7 +290,7 @@ function copyButton(box, problem) {
     setInterval(async () => {
       try { await fetch('/wake'); } catch (e) { }
       const b = await ask('editor');
-      if (b.url && at(b.url) !== url) place(at(b.url));
+      if (b.url && at(b.url) !== placedUrl) place(at(b.url));
     }, 60000);
   }
   boot();
