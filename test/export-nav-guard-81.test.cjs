@@ -81,7 +81,7 @@ test('#81 A: only an explicit confirmation switches, and it is not forwarded to 
   assert.ok(call, 'the engine is called once confirmed');
   assert.equal(call.params.arguments.interruptExport, undefined, 'the plugin-only option never reaches the engine');
   assert.equal(call.params.arguments.id, 'p_2');
-  assert.ok(h.bc().sent.some(m => m.type === 'task-project-switched' && m.project === 'p_2'));
+  assert.ok(h.bc().sent.some(m => m.type === 'task-project-switched' && m.project === 'p_2' && m.confirmed === true));
 });
 
 test('#81 A: no export running → the switch goes through as before', async () => {
@@ -114,7 +114,7 @@ test('#81 C: a proven restart with an export surfaces the plain sentence once', 
 /* frame.js in a DOM adapter: the page's asks are answered locally; an iframe load is one navigation. */
 function framePage(opts = {}) {
   const loads = [], timers = new Map(), listeners = [], errors = [];
-  let active = opts.active == null ? 0 : opts.active, restarted = !!opts.restarted, editorUrl = 'http://127.0.0.1:4321/', iframe = null;
+  let active = opts.active == null ? 0 : opts.active, known = opts.known !== false, restarted = !!opts.restarted, boundProject = 'p_1', editorUrl = 'http://127.0.0.1:4321/', iframe = null;
   const status = element('status');
   const note = element('div'); note.hidden = true;
   const noteText = element('span'); noteText.id = 'exportNoteText'; note.appendChild(noteText);
@@ -131,10 +131,10 @@ function framePage(opts = {}) {
     return el;
   }
   const answers = {
-    bind: () => ({ project: 'p_1' }),
+    bind: () => ({ project: boundProject }),
     editor: () => ({ url: editorUrl }),
     'editor-ticket': () => ({ ticket: 't' + loads.length, project: 'p_1' }),
-    'export-active': () => ({ known: true, active, restartedWithExport: restarted }),
+    'export-active': () => ({ known, active, restartedWithExport: restarted }),
     'ffmpeg-state': () => ({ supported: false }),
     problem: () => ({ shown: null }),
   };
@@ -173,8 +173,10 @@ function framePage(opts = {}) {
   const buttons = () => status.children.filter(c => c.tagName === 'button');
   const press = text => { const b = buttons().find(x => x.textContent === text); assert.ok(b, 'button ' + text + ' in: ' + status.textContent); b.click(); };
   const poll = () => { for (const fn of [...timers.values()]) fn(); };
+  const notify = m => listeners.slice().forEach(fn => fn({ data: m }));
   return { status, note, noteClose, loads, errors, press, poll, buttons, setActive: v => { active = v; },
-    setRestarted: v => { restarted = v; }, setEditorUrl: v => { editorUrl = v; } };
+    setRestarted: v => { restarted = v; }, setEditorUrl: v => { editorUrl = v; },
+    setKnown: v => { known = v; }, setBoundProject: v => { boundProject = v; }, notify };
 }
 
 test('#81 B: reloading the page while an export runs is held; the notice says wait or interrupt', async () => {
@@ -195,6 +197,7 @@ test('#81 B: waiting shows the ended sentence and a 现在切换 button, and nev
   await until(() => p.buttons().length === 2, 'the two buttons');
   p.press(WORDS.wait);
   await until(() => p.status.textContent.includes(WORDS.waiting), 'the waiting sentence');
+  assert.ok(p.buttons().some(b => b.textContent === WORDS.interrupt), 'the way out stays while waiting');
   p.setActive(0); p.poll();
   await until(() => p.status.textContent.includes(WORDS.ended), 'the ended sentence');
   assert.ok(p.buttons().some(b => b.textContent === WORDS.now));
@@ -266,4 +269,25 @@ test('#81 C: 知道了 closes only the restart note; the page and the editor not
   assert.equal(p.status.hidden, true, 'and does not open or hide the page status');
   assert.equal(p.loads.length, 2, 'and does not reload anything');
   assert.ok(!/正在导出视频|导出已经结束/.test(p.status.textContent));
+});
+
+test('#81 B: a count that cannot be read while waiting releases the page (fail-open)', async () => {
+  const p = framePage({ active: 0 });
+  await until(() => p.loads.length === 1, 'the first load');
+  p.setActive(1); p.setEditorUrl('http://127.0.0.1:5001/'); p.poll();
+  await until(() => p.buttons().length === 2, 'the two buttons');
+  p.press(WORDS.wait);
+  await until(() => p.status.textContent.includes(WORDS.waiting), 'the waiting sentence');
+  p.setKnown(false); p.poll();
+  await until(() => p.loads.length === 2, 'the page to load when the count cannot be read');
+  assert.ok(!/没有导出|no export/i.test(p.status.textContent));
+});
+
+test('#81 B: a confirmed switch from the chat is not asked again on this reload', async () => {
+  const p = framePage({ active: 1 });
+  await until(() => p.loads.length === 1, 'the first load');
+  p.setBoundProject('p_2');
+  p.notify({ type: 'task-project-switched', session: 'task-1', project: 'p_2', confirmed: true });
+  await until(() => p.loads.length === 2, 'the confirmed reload');
+  assert.ok(!/正在导出视频/.test(p.status.textContent));
 });

@@ -838,7 +838,7 @@ const HANDLERS = {
       }
       const result = await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
       if (name === 'fablecut_projects' && result.projectSwitched && taskOf(msg)) {
-        channel.postMessage({ type: 'task-project-switched', session: taskOf(msg), project: result.projectSwitched });
+        channel.postMessage({ type: 'task-project-switched', session: taskOf(msg), project: result.projectSwitched, confirmed: interrupted });
       }
       const { projectSwitched, ...answer } = result;
       if (interrupted && projectSwitched) answer.sayToStreamer = EXPORT_RUNNING.switched;

@@ -130,10 +130,13 @@ function copyButton(box, problem) {
     if (!exportHold || exportHold.waiting) return;
     exportHold.waiting = true;
     status.textContent = GUARD.waiting;
+    // #81 DD review: keep the way out while waiting — a stuck count must not trap her.
+    status.appendChild(guardButton(GUARD.interrupt, () => resumePlace()));
     exportHold.timer = setInterval(async () => {
       let a = null;
       try { a = await ask('export-active', { session }); } catch (e) { a = null; }
       if (!exportHold || !exportHold.waiting) return;
+      if (a && a.known === false) { resumePlace(); return; }
       if (a && a.known === true && a.active === 0) {
         clearInterval(exportHold.timer); exportHold.timer = null; exportHold.waiting = false; exportHold.ended = true;
         status.textContent = GUARD.ended;
@@ -249,6 +252,8 @@ function copyButton(box, problem) {
     if (m.type !== 'task-project-switched' || view !== 'task' || !session || m.session !== session || !url ||
         !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject && !suspended)) return;
     ++placing; pendingProject = null; // an older in-flight ticket cannot place over the new project
+    // #81 DD review: the chat already asked her and she said to interrupt; do not ask again on this reload.
+    if (m.confirmed) { allowPlace = true; setTimeout(() => { allowPlace = false; }, 5000); }
     bind(true); // read the authoritative map, including if notifications arrived out of order
   });
 
