@@ -2,9 +2,13 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; background: var(--panel-bg, #f7f7f5); color: var(--text-primary, #1a1a1a);
   font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+#exportNote { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 3; max-width: min(560px, calc(100% - 32px)); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 8px; background: var(--surface-elevated, var(--panel-bg, #fff)); border: 1px solid var(--border-default, #d4d4cf); box-shadow: 0 2px 10px rgba(0,0,0,.18); white-space: normal; }
+#exportNote[hidden] { display: none; }
+#exportNote button { flex: none; white-space: nowrap; font: inherit; padding: 2px 10px; border-radius: 6px; border: 1px solid var(--border-default, #d4d4cf); background: transparent; color: inherit; cursor: pointer; }
 #status { background: var(--panel-bg, #f7f7f5); z-index: 2; position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center; justify-content: center; padding: 24px; white-space: pre-line;
   text-align: center; color: var(--text-secondary, #6b6b66); }
 #status.error { color: var(--text-danger, #b42318); }
+#status.guard { color: var(--text-primary, #1a1a1a); }
 body { display: flex; flex-direction: column; }
 iframe.engine { flex: 1 1 auto; min-height: 0; width: 100%; border: 0; background: transparent; }
 /* first use: the ffmpeg banner above the editor */

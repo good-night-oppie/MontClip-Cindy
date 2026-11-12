@@ -141,7 +141,10 @@ async function setup(t) {
   }
   const main = source('main.js');
   const handler = main.slice(main.indexOf('  async call_tool(args, msg) {'), main.indexOf('  async montclip_undo'));
+  const consts = main.slice(main.indexOf('const EXPORT_RUNNING'), main.indexOf('const HANDLERS'));
+  const { EXPORT_RUNNING, switchesProject } = vm.runInNewContext(consts + ';({ EXPORT_RUNNING, switchesProject })', {});
   const handlers = vm.runInNewContext('({' + handler + '})', {
+    EXPORT_RUNNING, switchesProject,
     engineTools: async () => [{ name: 'fablecut_projects' }], taskOf: msg => msg.session_context.session_id,
     node: rpc, categoryOf: () => 'projects', RULES: {}, channel: { postMessage: m => {
       broadcasts.push(m); pages.forEach(p => p.notify(m));
@@ -168,7 +171,8 @@ for (const action of ['new', 'duplicate', 'open']) test(`#43 mechanism2 ${action
   a.equal(undo.status, 200); a.deepEqual(p.loads[1].conn.commands, ['undo']);
   a.deepEqual(p.loads[0].conn.commands, []);
   a.equal(f.broadcasts.length, 1);
-  a.deepEqual(Object.keys(f.broadcasts[0]).sort(), ['project', 'session', 'type']);
+  a.deepEqual(Object.keys(f.broadcasts[0]).sort(), ['confirmed', 'project', 'session', 'type']);
+  a.equal(f.broadcasts[0].confirmed, false, 'a plain tool switch is not a confirmed interrupt');
   for (const ticket of f.tickets) a.ok(!JSON.stringify([result, f.broadcasts, f.stderr()]).includes(ticket));
   a.ok(!JSON.stringify([result, f.broadcasts, f.stderr()]).includes(f.dir));
   const keyReplay = await f.call({ action, id, open: true, idempotency_key: 'once' });
