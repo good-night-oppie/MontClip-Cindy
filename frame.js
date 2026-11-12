@@ -100,10 +100,11 @@ function copyButton(box, problem) {
 
   let url = null, frame = null, placing = 0;
   let project = null, placedProject = null, pendingProject = null, binding = 0;
-  function dropFrame() {
-    ++placing; // cancel any ticket request that could resurrect the discarded editor
-    if (frame) frame.remove();
-    frame = null; placedProject = null;
+  let suspended = false, deferredTicket = null;
+  function suspendFrame() {
+    ++placing; // invalidate replies without destroying a document that may still be saving
+    suspended = true;
+    if (frame) frame.inert = true;
   }
   async function place(next) {
     const seq = ++placing;
@@ -120,7 +121,7 @@ function copyButton(box, problem) {
         // JJ's confirmed head only: closing a page with pending edits is not verified safe.
         const head = 'MontClip 没能连接这个任务的剪辑器。';
         const f = failureText(head, t && t.error, t && t.code);
-        dropFrame();
+        suspendFrame();
         show(head, true, false, f.problem);
         status.tabIndex = -1; status.focus();
         return; // retain pendingProject: no automatic retry loop for this target
@@ -135,26 +136,29 @@ function copyButton(box, problem) {
       frame.title = 'MontClip';
       frame.allow = 'autoplay; fullscreen; clipboard-write';
       const placedFrame = frame;
-      frame.addEventListener('load', () => { if (frame !== placedFrame || pendingProject) return; status.hidden = true; sent = null; sendTheme(); });
+      frame.addEventListener('load', () => { if (frame !== placedFrame || pendingProject || suspended) return; status.hidden = true; sent = null; sendTheme(); });
       document.body.appendChild(frame);
     }
+    suspended = false; deferredTicket = null; frame.inert = false;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
     placedProject = project; pendingProject = null;
   }
   /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
      host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
      gets an answer; the ticket goes back to that window only. */
-  window.addEventListener('message', async (e) => {
+  async function reconnectFrame(e) {
     if (!frame || !url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
-    if (!placedProject || pendingProject || !status.hidden) return;
     let origin = null;
     try { origin = new URL(url).origin; } catch (err) { return; }
     if (e.origin !== origin) return;
-    const seq = placing;
+    if (!placedProject || pendingProject || !status.hidden || suspended) { deferredTicket = e; return; }
+    const seq = placing; deferredTicket = e;
     const t = await ask('editor-ticket', { session });
     if (seq !== placing || !frame || e.source !== frame.contentWindow || pendingProject || !status.hidden) return;
+    if (deferredTicket === e) deferredTicket = null;
     if (t && t.ticket && t.project === placedProject) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
-  });
+  }
+  window.addEventListener('message', reconnectFrame);
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
   async function bind(replace = false) {
@@ -163,14 +167,19 @@ function copyButton(box, problem) {
     const b = await ask('bind', { session });
     if (seq !== binding) return false;
     if (b.error) {
-      dropFrame();
-      if (inUse(b)) show(b.error, true, true);
-      else { const f = failureText('MontClip 没能打开这个任务的项目。', b.error, b.code); show(f.text, true, false, f.problem); }
+      suspendFrame();
+      if (inUse(b)) show(b.error, true, !frame);
+      else { const head = 'MontClip 没能打开这个任务的项目。'; const f = failureText(head, b.error, b.code); show(frame ? head : f.text, true, false, f.problem); }
       status.tabIndex = -1; status.focus();
       return false;
     }
     project = b.project;
     if (replace && pendingProject && pendingProject !== project) { ++placing; pendingProject = null; }
+    if (replace && suspended && frame && project === placedProject) {
+      suspended = false; pendingProject = null; frame.inert = false; status.hidden = true;
+      const request = deferredTicket; deferredTicket = null;
+      if (request) reconnectFrame(request); // the retained editor may be waiting for its same-project SSE ticket
+    }
     if (replace && url && project !== placedProject && project !== pendingProject) place(url);
     return true;
   }
@@ -178,7 +187,7 @@ function copyButton(box, problem) {
   channel.addEventListener('message', (e) => {
     const m = e.data || {};
     if (m.type !== 'task-project-switched' || view !== 'task' || !session || m.session !== session || !url ||
-        !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject)) return;
+        !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject && !suspended)) return;
     ++placing; pendingProject = null; // an older in-flight ticket cannot place over the new project
     bind(true); // read the authoritative map, including if notifications arrived out of order
   });
