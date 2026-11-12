@@ -103,6 +103,7 @@ function copyButton(box, problem) {
   let suspended = false, deferredTicket = null;
   function suspendFrame() {
     ++placing; // invalidate replies without destroying a document that may still be saving
+    clearExportHold();
     suspended = true;
     if (frame) frame.inert = true;
   }
@@ -114,7 +115,15 @@ function copyButton(box, problem) {
     wait: '等导出结束', interrupt: '中断导出并切换',
     waiting: '正在等导出结束…', ended: '导出已经结束。', now: '现在切换',
   };
-  let exportHold = null, allowPlace = false, restartNote = false;
+  let exportHold = null, restartNote = false;
+  /* QQ final review: a hold must never outlive the navigation it belonged to — no stale timer may rewrite a new page. */
+  function clearExportHold() {
+    if (!exportHold) return;
+    if (exportHold.timer) clearInterval(exportHold.timer);
+    exportHold = null;
+    status.className = ''; status.hidden = true; status.textContent = '';
+    if (frame) frame.inert = false;
+  }
   function guardButton(label, fn) {
     const b = document.createElement('button');
     b.type = 'button'; b.textContent = label;
@@ -122,7 +131,8 @@ function copyButton(box, problem) {
     return b;
   }
   function showExportHold() {
-    status.className = ''; status.hidden = false; status.textContent = GUARD.prompt;
+    status.className = 'guard'; status.hidden = false; status.textContent = GUARD.prompt;
+    if (frame) frame.inert = true;   // the old editor must not take keyboard focus under the notice
     status.appendChild(guardButton(GUARD.wait, waitForExportEnd));
     status.appendChild(guardButton(GUARD.interrupt, () => resumePlace()));
   }
@@ -146,32 +156,36 @@ function copyButton(box, problem) {
   }
   function resumePlace() {
     if (!exportHold) return;
-    clearInterval(exportHold.timer);
-    exportHold = null; allowPlace = true;
-    status.hidden = true; status.textContent = '';
-    place(url);
+    clearExportHold();
+    place(url, true);
   }
   /* #81 C: one plain sentence after the only restart this code can prove had an export running (ffmpeg install). */
   const RESTART_NOTE = '刚才 MontClip 重新启动了一下，正在导出的视频没有导完。需要的话请再点一次导出。';
+  const restartBox = document.getElementById('exportNote'), restartClose = document.getElementById('exportNoteClose');
+  if (restartClose) restartClose.addEventListener('click', () => { if (restartBox) restartBox.hidden = true; });
   function showRestartNote() {
-    const box = document.getElementById('exportNote'), text = document.getElementById('exportNoteText');
-    const close = document.getElementById('exportNoteClose');
-    if (!box || !text) return;
-    text.textContent = RESTART_NOTE; box.hidden = false;
-    if (close) close.addEventListener('click', () => { box.hidden = true; });
+    const text = document.getElementById('exportNoteText');
+    // close 已在初始化时绑定一次（QQ final review）
+    if (!restartBox || !text) return;
+    text.textContent = RESTART_NOTE; restartBox.hidden = false;
   }
-  async function place(next) {
+  async function place(next, skipGuard = false) {
     const seq = ++placing;
     pendingProject = project;
     url = next;
-    if (view === 'task' && frame && !allowPlace) {
+    if (view === 'task' && frame && !skipGuard) {
       let look = null;
       try { look = await ask('export-active', { session, takeProof: true }); } catch (e) { look = null; }
+      if (look && look.restartedWithExport) restartNote = true;   // lock it before any seq check
       if (seq !== placing) return;
-      if (look && look.restartedWithExport) restartNote = true;
-      if (look && look.known === true && look.active > 0) { exportHold = { seq, waiting: false, timer: null }; showExportHold(); return; }
+      if (look && look.known === true && look.active > 0) {
+        clearExportHold();
+        exportHold = { seq, waiting: false, timer: null };
+        showExportHold(); return;
+      }
     }
-    allowPlace = false;
+    if (exportHold) clearExportHold();
+
     /* A fresh one-time ticket for every placement (MontClip#251 items 2-3, #260 item 4): the editor trades it
        for its task binding, the side panel for its channel suffix. The session id itself never goes in the
        address any more, and a ticket is never reused across placements. */
@@ -224,7 +238,7 @@ function copyButton(box, problem) {
   window.addEventListener('message', reconnectFrame);
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
-  async function bind(replace = false) {
+  async function bind(replace = false, skipGuard = false) {
     if (view !== 'task' || !session) return true;
     const seq = ++binding;
     const b = await ask('bind', { session });
@@ -243,7 +257,7 @@ function copyButton(box, problem) {
       const request = deferredTicket; deferredTicket = null;
       if (request) reconnectFrame(request); // the retained editor may be waiting for its same-project SSE ticket
     }
-    if (replace && url && ((project !== placedProject && project !== pendingProject) || (suspended && url !== placedUrl))) place(url);
+    if (replace && url && ((project !== placedProject && project !== pendingProject) || (suspended && url !== placedUrl))) place(url, skipGuard);
     return true;
   }
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(true); });
@@ -253,8 +267,8 @@ function copyButton(box, problem) {
         !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject && !suspended)) return;
     ++placing; pendingProject = null; // an older in-flight ticket cannot place over the new project
     // #81 DD review: the chat already asked her and she said to interrupt; do not ask again on this reload.
-    if (m.confirmed) { allowPlace = true; setTimeout(() => { allowPlace = false; }, 5000); }
-    bind(true); // read the authoritative map, including if notifications arrived out of order
+    const confirmedSwitch = m.confirmed === true;
+    bind(true, confirmedSwitch); // read the authoritative map, including if notifications arrived out of order
   });
 
   /* First use: export and noise reduction need ffmpeg. The banner asks once (以后再说 is remembered); the download
@@ -355,7 +369,8 @@ function copyButton(box, problem) {
     setInterval(async () => {
       try { await fetch('/wake'); } catch (e) { }
       const b = await ask('editor');
-      if (!exportHold && b.url && at(b.url) !== placedUrl) place(at(b.url));
+      if (b.url && exportHold) url = at(b.url);   // the engine restarted: 现在切换 must not load a dead address
+      else if (b.url && at(b.url) !== placedUrl) place(at(b.url));
     }, 60000);
   }
   boot();

@@ -781,7 +781,12 @@ const EXPORT_RUNNING = {
   switched: '已经换了项目。刚才正在导出的视频可能没有导完，需要的话请重新导出。',
   switchedNote: "The project was switched at the streamer's request. The export that was running may have been stopped by the switch, or may not have stopped yet. Do not tell her it was interrupted, that it finished, or that it is still running. If she needs the video, ask her to export it again.",
 };
-const SWITCH_ACTIONS = new Set(['open', 'new', 'duplicate']);
+/* The same rule node/lib.cjs:97 applies before it switches: open always; new unless open:false; duplicate only with
+   open:true. State and execution must judge alike (QQ final review, #82). */
+function switchesProject(args) {
+  const a = args || {};
+  return a.action === 'open' || (a.action === 'new' ? a.open !== false : !!a.open);
+}
 const HANDLERS = {
   async montclip_status(args, msg) {
     const bound = await forTask(msg).catch(() => null);
@@ -833,7 +838,7 @@ const HANDLERS = {
     if (name === 'fablecut_export' && call.job == null && call.cancel == null) call = Object.assign({}, call, { wait: false });
     try {
       // #81: a project switch stops an export drawn in the editor. Ask before switching; only her confirmation goes on.
-      if (name === 'fablecut_projects' && SWITCH_ACTIONS.has(String(call.action || 'list')) && !interrupted) {
+      if (name === 'fablecut_projects' && switchesProject(call) && !interrupted) {
         let active = null;
         try { active = await node('montclip/export-active', { session: taskOf(msg) }); } catch (e) { active = null; }
         if (active && active.known === true && active.active > 0)

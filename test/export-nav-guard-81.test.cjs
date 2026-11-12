@@ -305,3 +305,40 @@ test('#81 C: a chat query without takeProof does not consume the restart proof',
   assert.equal(call.params.takeProof, false, 'the page alone asks to take the proof');
   assert.equal(bc.sent.find(m => m.reqId === 'r0').restartedWithExport, false);
 });
+
+test('#81 A: duplicate without open does not switch, so it is not blocked', async () => {
+  const h = mainHost({ active: 1 });
+  const r = await h.call('call_tool', { name: 'fablecut_projects', args: { action: 'duplicate', id: 'p_1' } });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.result.code, undefined, 'node/lib.cjs:97 switches only with open:true');
+  assert.equal(h.calls.filter(c => c.method === 'montclip/call').length, 1);
+});
+
+test('#81 A: new open:false is not blocked; new by default and duplicate open:true are', async () => {
+  const quiet = mainHost({ active: 1 });
+  const r1 = await quiet.call('call_tool', { name: 'fablecut_projects', args: { action: 'new', name: '备份', open: false } });
+  assert.equal(r1.result.code, undefined, 'open:false never switches');
+  assert.equal(quiet.calls.filter(c => c.method === 'montclip/call').length, 1);
+
+  const byDefault = mainHost({ active: 1 });
+  const r2 = await byDefault.call('call_tool', { name: 'fablecut_projects', args: { action: 'new', name: '新项目' } });
+  assert.equal(r2.result.code, 'EXPORT_RUNNING');
+
+  const dupOpen = mainHost({ active: 1 });
+  const r3 = await dupOpen.call('call_tool', { name: 'fablecut_projects', args: { action: 'duplicate', id: 'p_1', open: true } });
+  assert.equal(r3.result.code, 'EXPORT_RUNNING');
+});
+
+test('#81 B: a confirmed switch clears a hold and its timer before the new page loads', async () => {
+  const p = framePage({ active: 0 });
+  await until(() => p.loads.length === 1, 'the first load');
+  p.setActive(1); p.setEditorUrl('http://127.0.0.1:5001/'); p.poll();
+  await until(() => /正在导出视频/.test(p.status.textContent), 'the hold');
+  p.setBoundProject('p_2');
+  p.notify({ type: 'task-project-switched', session: 'task-1', project: 'p_2', confirmed: true });
+  await until(() => p.loads.length === 2, 'the confirmed reload');
+  const before = p.loads.length;
+  p.poll();
+  assert.equal(p.loads.length, before, 'no stale timer reloads again');
+  assert.ok(!/导出已经结束|现在切换/.test(p.status.textContent), 'no stale timer rewrites the page');
+});
