@@ -769,6 +769,24 @@ function withEditorHint(r) {
   return r && r.code === 'NO_EDITOR' ? { ...r, note: EDITOR_CLOSED.en, sayToStreamer: EDITOR_CLOSED.zh, tools: EDITOR_CLOSED.tools } : r;
 }
 
+/* #81 (JJ's wording, issuecomment-6815344277): a switch under a running export is refused unless the streamer said to
+   interrupt it. The AI gets the facts in English and must not promise the export carries on; she gets one sentence. */
+const EXPORT_RUNNING = {
+  zh: '现在正在导出视频，这时候换项目会把导出中断。要等导出完成再换，还是现在中断导出、马上换？',
+  en: "A video export is running on this computer, so the project was NOT switched. Do not tell the streamer the export will keep running after a switch. Ask her whether to wait for the export to finish, or to stop it and switch now. Only if she says to stop it, call again with the confirmation option named in this tool's description.",
+  tools: 'fablecut_projects {action, id, interruptExport: true} switches after she said to interrupt the export. That option is the plugin\'s; never pass it unless she said to stop the export.',
+  tool: 'While a video export is running this refuses to switch projects and answers EXPORT_RUNNING (do not claim the export carries on). Only after the streamer says to interrupt it, call again with interruptExport:true in args.',
+  // JJ's revision on #82 (06:06Z): at the moment of this receipt the old page's export may still be running, so this
+  // says only what is certain. It replaces the sentence in 6815344277.
+  switched: '已经换了项目。刚才正在导出的视频可能没有导完，需要的话请重新导出。',
+  switchedNote: "The project was switched at the streamer's request. The export that was running may have been stopped by the switch, or may not have stopped yet. Do not tell her it was interrupted, that it finished, or that it is still running. If she needs the video, ask her to export it again.",
+};
+/* The same rule node/lib.cjs:97 applies before it switches: open always; new unless open:false; duplicate only with
+   open:true. State and execution must judge alike (QQ final review, #82). */
+function switchesProject(args) {
+  const a = args || {};
+  return a.action === 'open' || (a.action === 'new' ? a.open !== false : !!a.open);
+}
 const HANDLERS = {
   async montclip_status(args, msg) {
     const bound = await forTask(msg).catch(() => null);
@@ -797,6 +815,7 @@ const HANDLERS = {
       return { categories: Object.entries(counts).map(([category, count]) => ({ category, count })), hint: 'list_tools({category}) returns each operation with its parameters and the category RULES.' };
     }
     const list = tools.filter((t) => categoryOf(t.name) === args.category);
+    for (const t of list) if (t.name === 'fablecut_projects') t.note = EXPORT_RUNNING.tool;
     if (!list.length) return { error: 'unknown category', categories: Object.keys(CATEGORIES).concat('other') };
     return { category: args.category, rules: RULES[args.category] || '', tools: list };
   },
@@ -807,11 +826,32 @@ const HANDLERS = {
     const tool = tools.find((t) => t.name === name);
     if (!tool) return { error: 'unknown operation ' + name, available: tools.map((t) => t.name), hint: 'list_tools({category}) shows each one with its parameters.' };
     let call = args.args || {};
+    // #81: interruptExport is the plugin's own confirmation; it never reaches the engine.
+    let interrupted = false;
+
+    if (name === 'fablecut_projects' && call.interruptExport !== undefined) {
+      if (call.interruptExport === true) interrupted = true;
+      const { interruptExport, ...rest } = call; call = rest;
+    }
     // the engine's export waits for the file by default, longer than Cindy lets a tool call run (330 s): here it answers
     // with the job at once, and fablecut_export {job} reports it (P2, as montclip_export does)
     if (name === 'fablecut_export' && call.job == null && call.cancel == null) call = Object.assign({}, call, { wait: false });
     try {
-      return await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
+      // #81: a project switch stops an export drawn in the editor. Ask before switching; only her confirmation goes on.
+      if (name === 'fablecut_projects' && switchesProject(call) && !interrupted) {
+        let active = null;
+        try { active = await node('montclip/export-active', { session: taskOf(msg) }); } catch (e) { active = null; }
+        if (active && active.known === true && active.active > 0)
+          return { code: 'EXPORT_RUNNING', note: EXPORT_RUNNING.en, sayToStreamer: EXPORT_RUNNING.zh, tools: EXPORT_RUNNING.tools };
+      }
+      const result = await node('montclip/call', { session: taskOf(msg), name, arguments: call }, { timeoutMs: 60000, maxTotalMs: 900000 });
+      if (name === 'fablecut_projects' && result.projectSwitched && taskOf(msg)) {
+        channel.postMessage({ type: 'task-project-switched', session: taskOf(msg), project: result.projectSwitched, confirmed: interrupted });
+      }
+      const { projectSwitched, ...answer } = result;
+      if (interrupted && projectSwitched) { answer.sayToStreamer = EXPORT_RUNNING.switched; answer.note = EXPORT_RUNNING.switchedNote; }
+
+      return answer;
     } catch (e) {
       return { error: String(e.message), inputSchema: tool.inputSchema, rules: RULES[categoryOf(name)] || '' };
     }
@@ -993,6 +1033,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
+    else if (m.type === 'export-active') a = await node('montclip/export-active', { session: String(m.session || ''), takeProof: m.takeProof === true });
     else if (m.type === 'editor-ticket') a = await node('montclip/editor-ticket', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');

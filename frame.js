@@ -61,18 +61,23 @@ function copyButton(box, problem) {
   function ask(type, extra) {
     const reqId = type + '-' + Math.random().toString(36).slice(2);
     return new Promise((resolve) => {
-      let timer = null;
+      let timer = null, deadline = null;
       const onMsg = (e) => {
         const m = e.data || {};
         if (m.reqId !== reqId || !m.answer) return;
         channel.removeEventListener('message', onMsg);
         clearInterval(timer);
+        clearTimeout(deadline);
         resolve(m);
       };
       channel.addEventListener('message', onMsg);
       const send = () => channel.postMessage(Object.assign({ reqId, type }, extra || {}));
       send();
       timer = setInterval(send, 700);   // the logic page may still be waking: repeat until it answers
+      if (type === 'editor-ticket') deadline = setTimeout(() => {
+        channel.removeEventListener('message', onMsg); clearInterval(timer);
+        resolve({ error: 'Ticket request timed out.', code: 'TASK_TICKET_TIMEOUT' });
+      }, 15000);
     });
   }
 
@@ -86,25 +91,101 @@ function copyButton(box, problem) {
   let sent = null;
   function sendTheme() {
     const now = scheme();
-    if (!frame || !url || now === sent) return;
+    if (!frame || !placedUrl || now === sent) return;
     sent = now;
-    try { frame.contentWindow.postMessage({ type: 'montclip-host-theme', scheme: now }, new URL(url).origin); } catch (e) { }
+    try { frame.contentWindow.postMessage({ type: 'montclip-host-theme', scheme: now }, new URL(placedUrl).origin); } catch (e) { }
   }
   setInterval(sendTheme, 1500);
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', sendTheme);
 
-  let url = null, frame = null, placing = 0;
-  async function place(next) {
+  let url = null, placedUrl = null, frame = null, placing = 0;
+  let project = null, placedProject = null, pendingProject = null, binding = 0;
+  let suspended = false, deferredTicket = null;
+  function suspendFrame() {
+    ++placing; // invalidate replies without destroying a document that may still be saving
+    clearExportHold();
+    suspended = true;
+    if (frame) frame.inert = true;
+  }
+  /* #81 B: a reload (a project switch or a new engine address) stops an export drawn in this page. Ask the worker's
+     count first; when it can't be read (engine down) the page loads as before — PG: fail-open, and never say "no export".
+     JJ's words, unchanged. Nothing reloads by itself once the export ends: she clicks 现在切换. */
+  const GUARD = {
+    prompt: '正在导出视频，这时候切换会把导出中断。',
+    wait: '等导出结束', interrupt: '中断导出并切换',
+    waiting: '正在等导出结束…', ended: '导出已经结束。', now: '现在切换',
+  };
+  let exportHold = null, restartNote = false;
+  /* QQ final review: a hold must never outlive the navigation it belonged to — no stale timer may rewrite a new page. */
+  function clearExportHold() {
+    if (!exportHold) return;
+    if (exportHold.timer) clearInterval(exportHold.timer);
+    exportHold = null;
+    status.className = ''; status.hidden = true; status.textContent = '';
+    if (frame) frame.inert = false;
+  }
+  function guardButton(label, fn) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function showExportHold() {
+    status.className = 'guard'; status.hidden = false; status.textContent = GUARD.prompt;
+    if (frame) frame.inert = true;   // the old editor must not take keyboard focus under the notice
+    status.appendChild(guardButton(GUARD.wait, waitForExportEnd));
+    status.appendChild(guardButton(GUARD.interrupt, () => resumePlace()));
+  }
+  function waitForExportEnd() {
+    if (!exportHold || exportHold.waiting) return;
+    exportHold.waiting = true;
+    status.textContent = GUARD.waiting;
+    // #81 DD review: keep the way out while waiting — a stuck count must not trap her.
+    status.appendChild(guardButton(GUARD.interrupt, () => resumePlace()));
+    exportHold.timer = setInterval(async () => {
+      let a = null;
+      try { a = await ask('export-active', { session }); } catch (e) { a = null; }
+      if (!exportHold || !exportHold.waiting) return;
+      if (a && a.known === false) { resumePlace(); return; }
+      if (a && a.known === true && a.active === 0) {
+        clearInterval(exportHold.timer); exportHold.timer = null; exportHold.waiting = false; exportHold.ended = true;
+        status.textContent = GUARD.ended;
+        status.appendChild(guardButton(GUARD.now, () => resumePlace()));
+      }
+    }, 1500);
+  }
+  function resumePlace() {
+    if (!exportHold) return;
+    clearExportHold();
+    place(url, true);
+  }
+  /* #81 C: one plain sentence after the only restart this code can prove had an export running (ffmpeg install). */
+  const RESTART_NOTE = '刚才 MontClip 重新启动了一下，正在导出的视频没有导完。需要的话请再点一次导出。';
+  const restartBox = document.getElementById('exportNote'), restartClose = document.getElementById('exportNoteClose');
+  if (restartClose) restartClose.addEventListener('click', () => { if (restartBox) restartBox.hidden = true; });
+  function showRestartNote() {
+    const text = document.getElementById('exportNoteText');
+    // close 已在初始化时绑定一次（QQ final review）
+    if (!restartBox || !text) return;
+    text.textContent = RESTART_NOTE; restartBox.hidden = false;
+  }
+  async function place(next, skipGuard = false) {
     const seq = ++placing;
+    pendingProject = project;
     url = next;
-    if (!frame) {
-      frame = document.createElement('iframe');
-      frame.className = 'engine';
-      frame.title = 'MontClip';
-      frame.allow = 'autoplay; fullscreen; clipboard-write';
-      frame.addEventListener('load', () => { status.hidden = true; sent = null; sendTheme(); });
-      document.body.appendChild(frame);
+    if (view === 'task' && frame && !skipGuard) {
+      let look = null;
+      try { look = await ask('export-active', { session, takeProof: true }); } catch (e) { look = null; }
+      if (look && look.restartedWithExport) restartNote = true;   // lock it before any seq check
+      if (seq !== placing) return;
+      if (look && look.known === true && look.active > 0) {
+        clearExportHold();
+        exportHold = { seq, waiting: false, timer: null };
+        showExportHold(); return;
+      }
     }
+    if (exportHold) clearExportHold();
+
     /* A fresh one-time ticket for every placement (MontClip#251 items 2-3, #260 item 4): the editor trades it
        for its task binding, the side panel for its channel suffix. The session id itself never goes in the
        address any more, and a ticket is never reused across placements. */
@@ -112,35 +193,83 @@ function copyButton(box, problem) {
     if (session) {
       const t = await ask('editor-ticket', { session });
       if (seq !== placing) return;
-      if (t && t.ticket) ticket = t.ticket;
+      if (!t || !t.ticket) {
+        // JJ's confirmed head only: closing a page with pending edits is not verified safe.
+        const head = 'MontClip 没能连接这个任务的剪辑器。';
+        const f = failureText(head, t && t.error, t && t.code);
+        suspendFrame();
+        show(head, true, false, f.problem);
+        status.tabIndex = -1; status.focus();
+        return; // retain pendingProject: no automatic retry loop for this target
+      }
+      ticket = t.ticket;
+      project = t.project;
     }
     if (seq !== placing) return;
+    if (!frame) {
+      frame = document.createElement('iframe');
+      frame.className = 'engine';
+      frame.title = 'MontClip';
+      frame.allow = 'autoplay; fullscreen; clipboard-write';
+      const placedFrame = frame;
+      frame.addEventListener('load', () => { if (frame !== placedFrame || pendingProject || suspended) return; status.hidden = true; sent = null; sendTheme(); });
+      document.body.appendChild(frame);
+    }
+    suspended = false; deferredTicket = null; frame.inert = false;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
+    placedUrl = url; placedProject = project; pendingProject = null;
+    if (restartNote) { restartNote = false; showRestartNote(); }
   }
   /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
      host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
      gets an answer; the ticket goes back to that window only. */
-  window.addEventListener('message', async (e) => {
-    if (!frame || !url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
+  async function reconnectFrame(e) {
+    if (!frame || !placedUrl || placedUrl !== url || !session || e.source !== frame.contentWindow || !e.data || e.data.type !== 'montclip-need-ticket') return;
     let origin = null;
-    try { origin = new URL(url).origin; } catch (err) { return; }
+    try { origin = new URL(placedUrl).origin; } catch (err) { return; }
     if (e.origin !== origin) return;
+    if (!placedProject || pendingProject || !status.hidden || suspended) { deferredTicket = e; return; }
+    const seq = placing; deferredTicket = e;
     const t = await ask('editor-ticket', { session });
-    if (t && t.ticket) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
-  });
+    if (seq !== placing || !frame || placedUrl !== url || e.source !== frame.contentWindow || pendingProject || !status.hidden) return;
+    if (deferredTicket === e) deferredTicket = null;
+    if (t && t.ticket && t.project === placedProject) { try { frame.contentWindow.postMessage({ type: 'montclip-host-ticket', ticket: t.ticket }, origin); } catch (err) { } }
+  }
+  window.addEventListener('message', reconnectFrame);
   /* A task view shows its own task's project: bind it when the page opens and whenever the task comes back to the
      front (another task's view may have opened a different project meanwhile). The worker runs binds one at a time. */
-  async function bind() {
+  async function bind(replace = false, skipGuard = false) {
     if (view !== 'task' || !session) return true;
+    const seq = ++binding;
     const b = await ask('bind', { session });
+    if (seq !== binding) return false;
     if (b.error) {
-      if (inUse(b)) show(b.error, true, true);
-      else { const f = failureText('MontClip 没能打开这个任务的项目。', b.error, b.code); show(f.text, true, false, f.problem); }
+      suspendFrame();
+      if (inUse(b)) show(b.error, true, !frame);
+      else { const head = 'MontClip 没能打开这个任务的项目。'; const f = failureText(head, b.error, b.code); show(frame ? head : f.text, true, false, f.problem); }
+      status.tabIndex = -1; status.focus();
       return false;
     }
+    project = b.project;
+    if (replace && pendingProject && pendingProject !== project) { ++placing; pendingProject = null; }
+    if (replace && suspended && frame && project === placedProject && url === placedUrl) {
+      suspended = false; pendingProject = null; frame.inert = false; status.hidden = true;
+      const request = deferredTicket; deferredTicket = null;
+      if (request) reconnectFrame(request); // the retained editor may be waiting for its same-project SSE ticket
+    }
+    if (replace && url && ((project !== placedProject && project !== pendingProject) || (suspended && url !== placedUrl))) place(url, skipGuard);
     return true;
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && url) bind(true); });
+  channel.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type !== 'task-project-switched' || view !== 'task' || !session || m.session !== session || !url ||
+        !m.project || m.project === pendingProject || (m.project === placedProject && !pendingProject && !suspended)) return;
+    ++placing; pendingProject = null; // an older in-flight ticket cannot place over the new project
+    // #81 DD review: the chat already asked her and she said to interrupt; do not ask again on this reload.
+    const confirmedSwitch = m.confirmed === true;
+    bind(true, confirmedSwitch); // read the authoritative map, including if notifications arrived out of order
+  });
 
   /* First use: export and noise reduction need ffmpeg. The banner asks once (以后再说 is remembered); the download
      starts only from its button — the user's own click — or when the user asks the chat (montclip_install_ffmpeg). */
@@ -170,7 +299,7 @@ function copyButton(box, problem) {
       later.hidden = true;
       setTimeout(() => { banner.hidden = true; }, 4000);
       // the engine restarts to use it: follow it to its new address soon, not at the next minute
-      setTimeout(async () => { const b = await ask('editor'); if (b.url && at(b.url) !== url) place(at(b.url)); }, 1500);
+      setTimeout(async () => { const b = await ask('editor'); if (b.url && at(b.url) !== placedUrl) place(at(b.url)); }, 1500);
     } else {
       // why, in plain words; the raw error small below where the sentence points to it; 重试 where trying again can help
       const f = B.describe(m.code || (m.phase === 'cancelled' ? 'CANCELLED' : ''), m.message, { need: m.need });
@@ -240,7 +369,8 @@ function copyButton(box, problem) {
     setInterval(async () => {
       try { await fetch('/wake'); } catch (e) { }
       const b = await ask('editor');
-      if (b.url && at(b.url) !== url) place(at(b.url));
+      if (b.url && exportHold) url = at(b.url);   // the engine restarted: 现在切换 must not load a dead address
+      else if (b.url && at(b.url) !== placedUrl) place(at(b.url));
     }, 60000);
   }
   boot();
