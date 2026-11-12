@@ -452,7 +452,8 @@ const METHODS = {
      short deadline. It never starts the engine: with no engine up nothing can be claimed (known:false). PG's decision:
      a failed or slow query must not block navigation, and it is never reported as "no export". */
   async "montclip/export-active"(p) {
-    const proof = takeRestartProof();
+    // DD review: a chat query must not consume the one proof the page is waiting for.
+    const proof = p && p.takeProof === true ? takeRestartProof() : false;
     if (!started || !started.tools) return { known: false, active: null, restartedWithExport: proof };
     try {
       const r = await api("GET", "/api/export/active", undefined, { timeoutMs: 2000 });

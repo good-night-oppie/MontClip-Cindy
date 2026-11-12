@@ -776,7 +776,10 @@ const EXPORT_RUNNING = {
   en: "A video export is running on this computer, so the project was NOT switched. Do not tell the streamer the export will keep running after a switch. Ask her whether to wait for the export to finish, or to stop it and switch now. Only if she says to stop it, call again with the confirmation option named in this tool's description.",
   tools: 'fablecut_projects {action, id, interruptExport: true} switches after she said to interrupt the export. That option is the plugin\'s; never pass it unless she said to stop the export.',
   tool: 'While a video export is running this refuses to switch projects and answers EXPORT_RUNNING (do not claim the export carries on). Only after the streamer says to interrupt it, call again with interruptExport:true in args.',
-  switched: '已经中断导出并换了项目。刚才那次导出没有完成，需要的话请重新导出。',
+  // JJ's revision on #82 (06:06Z): at the moment of this receipt the old page's export may still be running, so this
+  // says only what is certain. It replaces the sentence in 6815344277.
+  switched: '已经换了项目。刚才正在导出的视频可能没有导完，需要的话请重新导出。',
+  switchedNote: "The project was switched at the streamer's request. The export that was running may have been stopped by the switch, or may not have stopped yet. Do not tell her it was interrupted, that it finished, or that it is still running. If she needs the video, ask her to export it again.",
 };
 const SWITCH_ACTIONS = new Set(['open', 'new', 'duplicate']);
 const HANDLERS = {
@@ -841,7 +844,7 @@ const HANDLERS = {
         channel.postMessage({ type: 'task-project-switched', session: taskOf(msg), project: result.projectSwitched, confirmed: interrupted });
       }
       const { projectSwitched, ...answer } = result;
-      if (interrupted && projectSwitched) answer.sayToStreamer = EXPORT_RUNNING.switched;
+      if (interrupted && projectSwitched) { answer.sayToStreamer = EXPORT_RUNNING.switched; answer.note = EXPORT_RUNNING.switchedNote; }
 
       return answer;
     } catch (e) {
@@ -1025,7 +1028,7 @@ channel.onmessage = async (e) => {
   try {
     if (m.type === 'editor') { const s = await node('montclip/start'); a = { origin: s.origin, url: s.url }; }
     else if (m.type === 'bind') a = await node('montclip/bind', { session: String(m.session || '') });
-    else if (m.type === 'export-active') a = await node('montclip/export-active', { session: String(m.session || '') });
+    else if (m.type === 'export-active') a = await node('montclip/export-active', { session: String(m.session || ''), takeProof: m.takeProof === true });
     else if (m.type === 'editor-ticket') a = await node('montclip/editor-ticket', { session: String(m.session || '') });
     else if (m.type === 'ffmpeg-state') a = await node('montclip/ffmpeg-spec');
     else if (m.type === 'overview') a = await node('montclip/overview');

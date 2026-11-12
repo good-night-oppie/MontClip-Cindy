@@ -13,7 +13,8 @@ const FRAME = fs.readFileSync(path.join(ROOT, 'frame.js'), 'utf8');
 const WORDS = {
   ask: '现在正在导出视频，这时候换项目会把导出中断。要等导出完成再换，还是现在中断导出、马上换？',
   note: 'A video export is running on this computer, so the project was NOT switched. Do not tell the streamer the export will keep running after a switch. Ask her whether to wait for the export to finish, or to stop it and switch now. Only if she says to stop it, call again with the confirmation option named in this tool\'s description.',
-  switched: '已经中断导出并换了项目。刚才那次导出没有完成，需要的话请重新导出。',
+  switched: '已经换了项目。刚才正在导出的视频可能没有导完，需要的话请重新导出。',
+  switchedNote: "The project was switched at the streamer's request. The export that was running may have been stopped by the switch, or may not have stopped yet. Do not tell her it was interrupted, that it finished, or that it is still running. If she needs the video, ask her to export it again.",
   prompt: '正在导出视频，这时候切换会把导出中断。',
   wait: '等导出结束', interrupt: '中断导出并切换', waiting: '正在等导出结束…',
   ended: '导出已经结束。', now: '现在切换',
@@ -38,7 +39,8 @@ function mainHost(opts = {}) {
       switch (r.method) {
         case 'montclip/tools': return ok({ tools: [{ name: 'fablecut_projects', inputSchema: { type: 'object' } }] });
         case 'montclip/export-active': {
-          const a = { known, active, restartedWithExport: restarted }; restarted = false; return ok(a);
+          const take = r.params && r.params.takeProof === true;
+          const a = { known, active, restartedWithExport: take ? restarted : false }; if (take) restarted = false; return ok(a);
         }
         case 'montclip/call': return ok({ content: [{ type: 'text', text: '{"projectSwitched":"p_2"}' }], projectSwitched: 'p_2' });
         case 'montclip/bind': return ok({ project: 'p_1', name: 'demo' });
@@ -77,6 +79,8 @@ test('#81 A: only an explicit confirmation switches, and it is not forwarded to 
   const r = await h.call('call_tool', { name: 'fablecut_projects', args: { action: 'open', id: 'p_2', interruptExport: true } });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.result.sayToStreamer, WORDS.switched, JSON.stringify(r));
+  assert.equal(r.result.note, WORDS.switchedNote);
+  assert.doesNotMatch(r.result.sayToStreamer, /已经中断|已经停止|没丢|已保存/);
   const call = h.calls.filter(c => c.method === 'montclip/call').at(-1);
   assert.ok(call, 'the engine is called once confirmed');
   assert.equal(call.params.arguments.interruptExport, undefined, 'the plugin-only option never reaches the engine');
@@ -103,7 +107,7 @@ test('#81 A: when the active count cannot be read, the switch is not blocked (fa
 test('#81 C: a proven restart with an export surfaces the plain sentence once', async () => {
   const h = mainHost({ active: 0, restarted: true });
   const bc = h.bc();
-  bc.onmessage({ data: { reqId: 'r1', type: 'export-active', session: 'task-1' } });
+  bc.onmessage({ data: { reqId: 'r1', type: 'export-active', session: 'task-1', takeProof: true } });
   await until(() => bc.sent.some(m => m.reqId === 'r1' && m.answer), 'the first answer');
   assert.equal(bc.sent.find(m => m.reqId === 'r1').restartedWithExport, true);
   bc.onmessage({ data: { reqId: 'r2', type: 'export-active', session: 'task-1' } });
@@ -290,4 +294,14 @@ test('#81 B: a confirmed switch from the chat is not asked again on this reload'
   p.notify({ type: 'task-project-switched', session: 'task-1', project: 'p_2', confirmed: true });
   await until(() => p.loads.length === 2, 'the confirmed reload');
   assert.ok(!/正在导出视频/.test(p.status.textContent));
+});
+
+test('#81 C: a chat query without takeProof does not consume the restart proof', async () => {
+  const h = mainHost({ active: 0, restarted: true });
+  const bc = h.bc();
+  bc.onmessage({ data: { reqId: 'r0', type: 'export-active', session: 'task-1' } });
+  await until(() => bc.sent.some(m => m.reqId === 'r0' && m.answer), 'the query answer');
+  const call = h.calls.filter(c => c.method === 'montclip/export-active').at(-1);
+  assert.equal(call.params.takeProof, false, 'the page alone asks to take the proof');
+  assert.equal(bc.sent.find(m => m.reqId === 'r0').restartedWithExport, false);
 });

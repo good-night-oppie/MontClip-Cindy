@@ -166,7 +166,7 @@ function copyButton(box, problem) {
     url = next;
     if (view === 'task' && frame && !allowPlace) {
       let look = null;
-      try { look = await ask('export-active', { session }); } catch (e) { look = null; }
+      try { look = await ask('export-active', { session, takeProof: true }); } catch (e) { look = null; }
       if (seq !== placing) return;
       if (look && look.restartedWithExport) restartNote = true;
       if (look && look.known === true && look.active > 0) { exportHold = { seq, waiting: false, timer: null }; showExportHold(); return; }
