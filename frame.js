@@ -106,10 +106,69 @@ function copyButton(box, problem) {
     suspended = true;
     if (frame) frame.inert = true;
   }
+  /* #81 B: a reload (a project switch or a new engine address) stops an export drawn in this page. Ask the worker's
+     count first; when it can't be read (engine down) the page loads as before — PG: fail-open, and never say "no export".
+     JJ's words, unchanged. Nothing reloads by itself once the export ends: she clicks 现在切换. */
+  const GUARD = {
+    prompt: '正在导出视频，这时候切换会把导出中断。',
+    wait: '等导出结束', interrupt: '中断导出并切换',
+    waiting: '正在等导出结束…', ended: '导出已经结束。', now: '现在切换',
+  };
+  let exportHold = null, allowPlace = false, restartNote = false;
+  function guardButton(label, fn) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    b.addEventListener('click', fn);
+    return b;
+  }
+  function showExportHold() {
+    status.className = ''; status.hidden = false; status.textContent = GUARD.prompt;
+    status.appendChild(guardButton(GUARD.wait, waitForExportEnd));
+    status.appendChild(guardButton(GUARD.interrupt, () => resumePlace()));
+  }
+  function waitForExportEnd() {
+    if (!exportHold || exportHold.waiting) return;
+    exportHold.waiting = true;
+    status.textContent = GUARD.waiting;
+    exportHold.timer = setInterval(async () => {
+      let a = null;
+      try { a = await ask('export-active', { session }); } catch (e) { a = null; }
+      if (!exportHold || !exportHold.waiting) return;
+      if (a && a.known === true && a.active === 0) {
+        clearInterval(exportHold.timer); exportHold.timer = null; exportHold.waiting = false; exportHold.ended = true;
+        status.textContent = GUARD.ended;
+        status.appendChild(guardButton(GUARD.now, () => resumePlace()));
+      }
+    }, 1500);
+  }
+  function resumePlace() {
+    if (!exportHold) return;
+    clearInterval(exportHold.timer);
+    exportHold = null; allowPlace = true;
+    status.hidden = true; status.textContent = '';
+    place(url);
+  }
+  /* #81 C: one plain sentence after the only restart this code can prove had an export running (ffmpeg install). */
+  const RESTART_NOTE = '刚才 MontClip 重新启动了一下，正在导出的视频没有导完。需要的话请再点一次导出。';
+  function showRestartNote() {
+    const box = document.getElementById('exportNote'), text = document.getElementById('exportNoteText');
+    const close = document.getElementById('exportNoteClose');
+    if (!box || !text) return;
+    text.textContent = RESTART_NOTE; box.hidden = false;
+    if (close) close.addEventListener('click', () => { box.hidden = true; });
+  }
   async function place(next) {
     const seq = ++placing;
     pendingProject = project;
     url = next;
+    if (view === 'task' && frame && !allowPlace) {
+      let look = null;
+      try { look = await ask('export-active', { session }); } catch (e) { look = null; }
+      if (seq !== placing) return;
+      if (look && look.restartedWithExport) restartNote = true;
+      if (look && look.known === true && look.active > 0) { exportHold = { seq, waiting: false, timer: null }; showExportHold(); return; }
+    }
+    allowPlace = false;
     /* A fresh one-time ticket for every placement (MontClip#251 items 2-3, #260 item 4): the editor trades it
        for its task binding, the side panel for its channel suffix. The session id itself never goes in the
        address any more, and a ticket is never reused across placements. */
@@ -142,6 +201,7 @@ function copyButton(box, problem) {
     suspended = false; deferredTicket = null; frame.inert = false;
     frame.src = url + (url.includes('?') ? '&' : '?') + 'theme=' + scheme() + (ticket ? '&ticket=' + encodeURIComponent(ticket) : '');
     placedUrl = url; placedProject = project; pendingProject = null;
+    if (restartNote) { restartNote = false; showRestartNote(); }
   }
   /* The framed page asks its parent for a new ticket when its event stream reconnects (the engine's
      host-embed.js sends montclip-need-ticket). Only the framed window itself, at the engine's own origin,
@@ -290,7 +350,7 @@ function copyButton(box, problem) {
     setInterval(async () => {
       try { await fetch('/wake'); } catch (e) { }
       const b = await ask('editor');
-      if (b.url && at(b.url) !== placedUrl) place(at(b.url));
+      if (!exportHold && b.url && at(b.url) !== placedUrl) place(at(b.url));
     }, 60000);
   }
   boot();

@@ -133,7 +133,7 @@ function freePort(port) {
 
 let extSettingsFile = null;   // the external-ffmpeg.json the engine was given, or null
 let started = null, starting = null;   // the running engine: {origin, port, token, tools, callTool, …}
-function api(method, urlPath, body) {
+function api(method, urlPath, body, opts) {
   return new Promise((resolve, reject) => {
     const req = http.request(started.origin + urlPath, { method, headers: { "Content-Type": "application/json", "X-MontClip-Session": started.token } }, (res) => {
       let data = "";
@@ -142,7 +142,7 @@ function api(method, urlPath, body) {
       res.on("end", () => { let j = null; try { j = JSON.parse(data); } catch { j = { raw: data }; } resolve({ status: res.statusCode, body: j }); });
     });
     req.on("error", reject);
-    req.setTimeout(20000, () => req.destroy(new Error("the MontClip engine did not answer")));
+    req.setTimeout((opts && opts.timeoutMs) || 20000, () => req.destroy(new Error("the MontClip engine did not answer")));
     req.end(body === undefined ? undefined : JSON.stringify(body));
   });
 }
@@ -337,7 +337,13 @@ const METHODS = {
     }
     note({ event: "ffmpeg-installed", version: out.version });
     const restarting = !!started;
-    if (restarting) setTimeout(stopEngine, 300);
+    if (restarting) {
+      /* #81 C: prove it before stopping the engine, or say nothing afterwards. */
+      let active = null;
+      try { active = (await api("GET", "/api/export/active", undefined, { timeoutMs: 2000 })).body.active; } catch (e) { }
+      noteRestartWithExport(active);
+      setTimeout(stopEngine, 300);
+    }
     return { ...out, state: ffmpegState(), restarting };
   },
   /* Export (main.js montclip_export): start a job in the engine (the open editor tab, else headless), report it, and
@@ -442,6 +448,21 @@ const METHODS = {
     editorTrace.issued(session);
     return { ticket: r.body.ticket, expiresInMs: r.body.expiresInMs, project: b.project };
   },
+  /* #81: is a video export running right now? The engine's own count (server.js /api/export/active), read with a
+     short deadline. It never starts the engine: with no engine up nothing can be claimed (known:false). PG's decision:
+     a failed or slow query must not block navigation, and it is never reported as "no export". */
+  async "montclip/export-active"(p) {
+    const proof = takeRestartProof();
+    if (!started || !started.tools) return { known: false, active: null, restartedWithExport: proof };
+    try {
+      const r = await api("GET", "/api/export/active", undefined, { timeoutMs: 2000 });
+      const n = r && r.status === 200 && r.body && r.body.active;
+      if (!Number.isFinite(n)) return { known: false, active: null, restartedWithExport: proof };
+      return { known: true, active: n, restartedWithExport: proof };
+    } catch (e) {
+      return { known: false, active: null, restartedWithExport: proof };
+    }
+  },
   /* #56: why no editor is bound to this task, as far as the worker can see — whether its page ever asked for a
      ticket. Whether the page then traded it is the engine's to know; it does not say yet. */
   async "montclip/editor-trace"(p) { return editorTrace.why(String(p.session || "")); },
@@ -488,6 +509,20 @@ function dispatch(method, params) {
    ffmpeg each running export spawned (stdin closed, then killed by its handle) and deletes the half-finished files,
    then exits within ~4 s (server.js shutdown). P11: an export's ffmpeg must never outlive the worker. */
 let leaving = false;
+/* #81 C: the restarts this code can prove had an export running are the ones it causes itself (installing ffmpeg):
+   the count is read just before the engine is stopped, and the fact waits for one page to say once. A crash or an
+   outside restart leaves no such proof, so nothing is said then. */
+const RESTART_PROOF = path.join(DATA, "export-restart.json");
+function noteRestartWithExport(active) {
+  if (!(active > 0)) return;
+  try { fs.writeFileSync(RESTART_PROOF, JSON.stringify({ at: Date.now(), active })); } catch (e) { }
+}
+function takeRestartProof() {
+  let m = null;
+  try { m = JSON.parse(fs.readFileSync(RESTART_PROOF, "utf8")); } catch (e) { return false; }
+  try { fs.unlinkSync(RESTART_PROOF); } catch (e) { }
+  return !!(m && Number.isFinite(m.at) && Date.now() - m.at < 10 * 60 * 1000 && m.active > 0);
+}
 function stopEngine() {
   if (leaving) return;
   leaving = true;

@@ -141,7 +141,10 @@ async function setup(t) {
   }
   const main = source('main.js');
   const handler = main.slice(main.indexOf('  async call_tool(args, msg) {'), main.indexOf('  async montclip_undo'));
+  const consts = main.slice(main.indexOf('const EXPORT_RUNNING'), main.indexOf('const HANDLERS'));
+  const { EXPORT_RUNNING, SWITCH_ACTIONS } = vm.runInNewContext(consts + ';({ EXPORT_RUNNING, SWITCH_ACTIONS })', {});
   const handlers = vm.runInNewContext('({' + handler + '})', {
+    EXPORT_RUNNING, SWITCH_ACTIONS,
     engineTools: async () => [{ name: 'fablecut_projects' }], taskOf: msg => msg.session_context.session_id,
     node: rpc, categoryOf: () => 'projects', RULES: {}, channel: { postMessage: m => {
       broadcasts.push(m); pages.forEach(p => p.notify(m));
