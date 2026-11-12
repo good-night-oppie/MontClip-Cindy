@@ -29,6 +29,7 @@ async function run(label,ref,fail,flush,inflight=false){
    else leaves.push({url:req.url,method:req.method,body});res.setHeader('Content-Type','application/json');res.end('{}');return;}
   res.setHeader('Content-Type','text/html;charset=utf-8');
   if(req.url.startsWith('/editor')){res.end(`<!doctype html><button>synthetic editor</button><script>
+   const EXPORT_WORKER=false; // ordinary editor; background-export copies must not save
    const project={revision:1,clips:[]},runtime={projectId:'p_1',saveTimer:null,saving:null,saveFailed:false},state={connected:true,time:0,compCtx:null};
    const projectJSON=()=>({...project}),eventLog=()=>({toJSON:()=>({}),settle(){}}),persistUndoSoon=()=>parent.postMessage({saved:true},location.origin),syncFromServer=async()=>false,toast=()=>{};
    ${saveSource}
