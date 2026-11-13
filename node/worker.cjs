@@ -1,7 +1,7 @@
 /* MontClip inside Cindy — the plugin's Node worker (JSON-RPC over stdio, one message per line).
 
-   It runs the MontClip engine itself, in this process: app/server.js (the editor's HTTP server on 127.0.0.1,
-   which the plugin's task view frames) and app/mcp-server.js's fablecut_* tools, called in-process. Nothing
+   It runs the MontClip engine itself, in this process: app/server/server.js (the editor's HTTP server on 127.0.0.1,
+   which the plugin's task view frames) and app/server/mcp-server.js's fablecut_* tools, called in-process. Nothing
    here re-implements editing: every change goes through the engine's own tools and its one project /
    revision / undo chain. app/ is a copy of the repository root made by build.cjs; never edit it.
 
@@ -168,7 +168,7 @@ async function boot() {
   if (extSettings) process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS = extSettings;
   else delete process.env.MONTCLIP_EXTERNAL_FFMPEG_SETTINGS;
   extSettingsFile = extSettings || null;
-  require(path.join(APP, "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
+  require(path.join(APP, "server", "server.js"));   // throws DATA_DIR_IN_USE when the Windows app has this data folder
   started = { origin: `http://127.0.0.1:${port}`, port, token };
   let up = false;
   for (let i = 0; i < 100 && !up; i++) {
@@ -176,8 +176,8 @@ async function boot() {
     if (!up) await new Promise((r) => setTimeout(r, 100));
   }
   if (!up) throw new Error("the MontClip engine did not start");
-  const mcp = require(path.join(APP, "mcp-server.js"));
-  const browser = require(path.join(APP, "export-jobs.js")).findBrowser() || null;
+  const mcp = require(path.join(APP, "server", "mcp-server.js"));
+  const browser = require(path.join(APP, "server", "export-jobs.js")).findBrowser() || null;
   Object.assign(started, { tools: mcp.TOOLS, callTool: mcp.callTool, envFilled, browser, ffmpeg: ffmpegState() });
   // names only, never values
   note({ event: "engine-started", origin: started.origin, node: process.version, envFilled, browser: !!browser, ffmpeg: started.ffmpeg });
@@ -201,7 +201,7 @@ async function taskProjects(p) {
   const { taskId, idempotency_key, wait_ms, ...args } = p.arguments || {};
   if (!taskId && idempotency_key == null) return binder.projects(p.session, args);
   let projectSwitched;
-  projectSwitchTasks ||= require(path.join(APP, 'tool-tasks.js')).createToolTasks({
+  projectSwitchTasks ||= require(path.join(APP, 'server', 'tool-tasks.js')).createToolTasks({
     dir: path.join(DATA, 'cindy-project-tasks'), dataDir: DATA,
   });
   const receipt = await projectSwitchTasks.call({ scope: JSON.stringify([p.session, 'projects']),

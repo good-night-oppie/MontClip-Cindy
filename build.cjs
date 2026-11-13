@@ -44,12 +44,14 @@ fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ plugin, engine
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);
 const FILE_EXT = new Set([".js", ".html", ".css", ".json", ".svg", ".md"]);
 const SKIP_MD = new Set(["CHANGELOG.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "DEVELOPMENT.md", "SECURITY.md", "AGENTS.md", "README.md", "LICENSES.md"]);
-const DIRS = ["icons", "library", "licenses"];
+const DIRS = ["server", "icons", "library", "licenses"];
+// the engine's server code lives in server/ since MontClip #281; its npm bin (cli.js) is not shipped, as before
+const SKIP_TRACKED = new Set(["server/cli.js"]);
 
 
 fs.mkdirSync(OUT, { recursive: true });
-let files = 0, bytes = 0;
-const copy = (from, to) => { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); files++; bytes += fs.statSync(to).size; };
+let files = 0, bytes = 0, codeFiles = 0;
+const copy = (from, to) => { fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to); files++; if (/\.js$/.test(to)) codeFiles++; bytes += fs.statSync(to).size; };
 for (const e of fs.readdirSync(ROOT, { withFileTypes: true })) {
   if (!e.isFile() || SKIP_FILES.has(e.name) || SKIP_MD.has(e.name) || e.name === "project.json") continue;
   if (!tracked.has(e.name)) continue;
@@ -64,10 +66,15 @@ const walk = (rel) => {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".")) continue;
     const r = path.join(rel, e.name);
-    if (e.isDirectory()) walk(r); else if (tracked.has(r.replace(/\\/g, "/"))) copy(path.join(ROOT, r), path.join(OUT, r));
+    if (e.isDirectory()) walk(r);
+    else if (tracked.has(r.replace(/\\/g, "/")) && !SKIP_TRACKED.has(r.replace(/\\/g, "/"))) copy(path.join(ROOT, r), path.join(OUT, r));
   }
 };
 for (const d of DIRS) walk(d);
+// #281 A1.6: the engine used to be flat at its root, so a copy that reaches no code at all must stop the build
+// instead of shipping an app that cannot start.
+if (!codeFiles) throw new Error("the engine copy holds no .js files — the engine layout moved; build.cjs would ship an app that cannot start");
+
 // the Windows app's pinned LGPL ffmpeg: its manifest and installer (the plugin downloads the same build)
 for (const f of ["ffmpeg-manifest.json", "fetch-ffmpeg.cjs"]) copy(path.join(ROOT, "desktop", f), path.join(OUT, "desktop", f));
 // the speech engine's manifest (asr-models.js reads it when the engine first answers /api/asr/*; without it that request

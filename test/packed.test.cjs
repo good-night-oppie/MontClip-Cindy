@@ -5,7 +5,7 @@ const { spawn } = require("node:child_process");
 const ROOT = path.resolve(__dirname, ".."), DIST = path.join(ROOT, "dist", "montclip");
 
 test("package contains the pinned engine and plugin, not the source repository", () => {
-  for (const f of ["app.js", "server.js", "host-embed.js", "index.html", "style.css", "LICENSE", "LICENSES.md"])
+  for (const f of ["app.js", "server/server.js", "host-embed.js", "index.html", "style.css", "LICENSE", "LICENSES.md"])
     assert.ok(fs.readFileSync(path.join(ROOT, "engine", f)).equals(fs.readFileSync(path.join(DIST, "node", "app", f))), f);
   for (const f of ["main.js", "frame.css", "frame.js", "task-view.html", "panel.html", "node/worker.cjs", "node/lib.cjs"])
     assert.ok(fs.readFileSync(path.join(ROOT, f)).equals(fs.readFileSync(path.join(DIST, f))), f);

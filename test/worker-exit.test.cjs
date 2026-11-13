@@ -9,15 +9,15 @@ const fs = require("node:fs"), path = require("node:path"), os = require("node:o
 const { spawn } = require("node:child_process");
 
 function fakeEngine(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "server.js"), `
+  fs.mkdirSync(path.join(dir, "server"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "server", "server.js"), `
     const http = require("node:http"), fs = require("node:fs"), path = require("node:path");
     http.createServer((req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end("{}"); })
       .listen(+process.env.PORT, "127.0.0.1");
     process.on("SIGTERM", () => { fs.writeFileSync(path.join(process.env.FABLECUT_DATA_DIR, "shutdown-ran"), "1"); process.exit(0); });
   `);
-  fs.writeFileSync(path.join(dir, "mcp-server.js"), "module.exports = { TOOLS: [], callTool: async () => ({}) };");
-  fs.writeFileSync(path.join(dir, "export-jobs.js"), "module.exports = { findBrowser: () => null };");
+  fs.writeFileSync(path.join(dir, "server", "mcp-server.js"), "module.exports = { TOOLS: [], callTool: async () => ({}) };");
+  fs.writeFileSync(path.join(dir, "server", "export-jobs.js"), "module.exports = { findBrowser: () => null };");
 }
 
 test("when Cindy closes the worker's stdin, the engine's shutdown runs and the worker exits", { timeout: 30000 }, async (t) => {
