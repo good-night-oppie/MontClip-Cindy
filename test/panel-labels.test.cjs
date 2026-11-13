@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const M=require('../embed/panel-model.js');
 test('all engine keyframe channels have Chinese labels, including hue blur and duck',()=>{
- const app=fs.readFileSync(path.join(__dirname,'../engine/app.js'),'utf8');const keys=JSON.parse(app.match(/const ANIMATABLE = (\[[\s\S]*?\]);/)[1]);
+ const app=fs.readFileSync(path.join(__dirname,'../engine/app/app.js'),'utf8');const keys=JSON.parse(app.match(/const ANIMATABLE = (\[[\s\S]*?\]);/)[1]);
  for(const key of keys){assert.doesNotMatch(M.propName(key),/[a-zA-Z]/,key);assert.notEqual(M.propName(key),'其他属性',key);}
  assert.equal(M.propName('hue'),'色相（度）');assert.equal(M.propName('blur'),'模糊（像素）');assert.equal(M.propName('duck'),'自动压低音量（分贝）');
 });
