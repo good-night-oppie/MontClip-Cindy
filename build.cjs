@@ -44,8 +44,9 @@ fs.writeFileSync(path.join(DIST, "SOURCE.json"), JSON.stringify({ plugin, engine
 const SKIP_FILES = new Set(["cli.js", "glama.json", "server.json", "package-lock.json"]);
 const FILE_EXT = new Set([".js", ".html", ".css", ".json", ".svg", ".md"]);
 const SKIP_MD = new Set(["CHANGELOG.md", "CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "DEVELOPMENT.md", "SECURITY.md", "AGENTS.md", "README.md", "LICENSES.md"]);
-const DIRS = ["server", "icons", "library", "licenses"];
+const DIRS = ["server", "app", "icons", "library", "licenses"];
 // the engine's server code lives in server/ since MontClip #281; its npm bin (cli.js) is not shipped, as before
+// the editor page's own scripts live in app/ since MontClip #281 stage 2
 const SKIP_TRACKED = new Set(["server/cli.js"]);
 
 

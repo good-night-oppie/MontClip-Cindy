@@ -6,7 +6,7 @@ const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),
 const test=require('node:test');
 const root=path.resolve(__dirname,'..');
 const show=(repo,ref,file)=>cp.execFileSync('git',['-C',repo,'show',ref+':'+file],{encoding:'utf8',maxBuffer:8e6});
-const app=fs.readFileSync(path.join(root,'engine/app.js'),'utf8');
+const app=fs.readFileSync(path.join(root,'engine/app/app.js'),'utf8');
 function fn(name){const m=new RegExp('^(?:async )?function '+name+'\\(','m').exec(app);assert.ok(m,name);const line=app.slice(m.index,app.indexOf('\n',m.index)).trim();try{new vm.Script('('+line+')');return line;}catch{}const ends=/^}/gm;ends.lastIndex=m.index;for(let end;(end=ends.exec(app));){const s=app.slice(m.index,end.index+1);try{new vm.Script('('+s+')');return s;}catch{}}throw Error(name);}
 const names=['scheduleSave','saveNow','flushSave','undoStackUrl','keepPlayheadOnLeave'];
 const saveSource=names.map(fn).join('\n');
