@@ -332,6 +332,13 @@ const EXPORT_TEXT = {
       projectChanged: '这个任务的项目在等你选文件夹时被换走了，再导一次。',
       other: '这次没有做完，出了个我们没预料到的问题。原片没有改动。再点〔重试〕；还不行，点〔复制问题信息〕发给我们。',
     },
+    // opened with 「以管理员身份运行」: JJ's three sentences, word for word as the engine's ui-preferences.js says them
+    // (MontClip#247 / #284, QQ review 5900527770: the card says them, not the 没预料到 fallback)
+    elevated: {
+      EXPORT_ELEVATED_CINDY: 'Cindy 是用「以管理员身份运行」打开的，导出需要的浏览器在这种方式下没法正常工作，这次导出已停下，没有生成文件。请先关掉 Cindy，不要选「以管理员身份运行」，直接双击打开，再导出一次。',
+      EXPORT_ELEVATED_MONTCLIP: 'MontClip 是用「以管理员身份运行」打开的，导出需要的浏览器在这种方式下没法正常工作，这次导出已停下，没有生成文件。请先关掉 MontClip，不要选「以管理员身份运行」，直接双击打开，再导出一次。',
+      EXPORT_ELEVATED_PROGRAM: '这个程序是用「以管理员身份运行」打开的，导出需要的浏览器在这种方式下没法正常工作，这次导出已停下，没有生成文件。请先关掉这个程序，不要选「以管理员身份运行」，直接双击打开，再导出一次。',
+    },
     kept: '你的剪辑都还在，没有丢。',
     retry: '重试', install: '下载并安装', pickAgain: '换个文件夹', copyProblem: '复制问题信息',   // JJ v2 buttons
     copyProblemNote: '会打开 MontClip 任务页，在那里复制。',
@@ -360,6 +367,11 @@ const EXPORT_TEXT = {
       stopped: 'The export stopped partway and didn\'t finish. The original is unchanged; you can export again: click Retry.',   // JJ's final words, 2026-11-07 (#19)
       projectChanged: 'The project changed while you were choosing a folder. Export again.',
       other: 'This didn\'t finish because of a problem we didn\'t expect. The original is unchanged. Click Retry; if it still fails, use "Copy problem details" and send it to us.',
+    },
+    elevated: {
+      EXPORT_ELEVATED_CINDY: 'Cindy was opened with "Run as administrator", and the browser it needs for exporting can\'t work properly that way, so this export stopped and no file was made. Close Cindy, open it normally (not "Run as administrator"), and export again.',
+      EXPORT_ELEVATED_MONTCLIP: 'MontClip was opened with "Run as administrator", and the browser it needs for exporting can\'t work properly that way, so this export stopped and no file was made. Close MontClip, open it normally (not "Run as administrator"), and export again.',
+      EXPORT_ELEVATED_PROGRAM: 'This program was opened with "Run as administrator", and the browser it needs for exporting can\'t work properly that way, so this export stopped and no file was made. Close this program, open it normally (not "Run as administrator"), and export again.',
     },
     kept: 'Your edits are all still there.',
     retry: 'Retry', install: 'Download and install', pickAgain: 'Choose another folder', copyProblem: 'Copy problem details',
@@ -415,12 +427,20 @@ function exportReportText(report) {
   const summary = all.filter((c) => c.ok !== false).map(text).filter(Boolean).join(' · ');
   return [summary, ...all.filter((c) => c.ok === false).map(text).filter(Boolean)].filter(Boolean).join('\n');
 }
+/** EXPORT_ELEVATED_*: JJ's sentence for the program she opened as administrator, or null for any other failure. The
+ *  engine's job error is English (it is written where no page knows her language), so the card keeps its own copy of
+ *  the engine's words; test/export-elevated.test.cjs checks them against engine/ui-preferences.js. */
+function elevatedText(c, lang) {
+  const t = EXPORT_TEXT[lang === 'en' ? 'en' : 'zh'];
+  return c && Object.hasOwn(t.elevated, String(c.code || '')) ? t.elevated[c.code] : null;
+}
 function plainFailure(c) {
   const t = EXPORT_TEXT.zh;
   const text = c.code === 'NO_JOB' ? '这次导出的记录已失效，查不到了。请先打开导出文件夹，看成片在不在；不在的话，重新导出一次。你的剪辑都还在，没有丢。' : c.phase === 'copyFailed' ? copyFailureText(c, 'zh')
     /* EXPORT_AUDIO_FAILED: the engine's error is already JJ's sentence in the streamer's language (#231) — say
        that, not the generic fallback (MontClip#229 C2). */
     : c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim() ? String(c.reason).trim()
+    : elevatedText(c, 'zh') ? elevatedText(c, 'zh')
     : c.code === 'DATA_DIR_IN_USE' ? String(c.reason) : t.failedWhy[failedReason(c)] + t.kept;
   return { error: text, code: c.code || (c.phase === 'copyFailed' ? 'COPY_FAILED' : 'EXPORT_FAILED') };
 }
@@ -470,7 +490,8 @@ function exportCard(c, lang) {
     : c.phase === 'failed' ? (c.code === 'DATA_DIR_IN_USE' ? '<p style="margin:8px 0 0">' + esc(c.reason) + '</p>'
       // EXPORT_AUDIO_FAILED: the engine's sentence, as plainFailure gives the agent (MontClip#229 C2)
       : '<p style="margin:8px 0 0">' + (c.code === 'EXPORT_AUDIO_FAILED' && c.reason && String(c.reason).trim()
-        ? esc(String(c.reason).trim()) : t.failedWhy[failedReason(c)] + t.kept) + '</p>' +
+        ? esc(String(c.reason).trim()) : elevatedText(c, lang) ? esc(elevatedText(c, lang))   // EXPORT_ELEVATED_* (MontClip#247)
+        : t.failedWhy[failedReason(c)] + t.kept) + '</p>' +
         (c.installFailed ? '<p style="' + small + '">' + t.installFailed + '</p>' : '') +
         buttons([failedReason(c) === 'tool' ? ['install-ffmpeg', t.install, true] : ['retry', t.retry, true]]
           .concat(hasRaw(c) ? [['copy-problem', t.copyProblem, false]] : [])) +

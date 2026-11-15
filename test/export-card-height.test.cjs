@@ -25,6 +25,7 @@ const CASES = [
   ["done, two warnings, a long name", { phase: "done", folder: "我的切片 2026 年 11 月", dir: "D:\\直播\\切片\\2026-11", job: "x_1", files: [{ name: LONG, bytes: 987654321, renamed: true }], note: "640×360 · 30 fps · 540 frames · 18.00 s · −14.4 LUFS · 2.5 MB\n" + SILENT + "\n" + UNCHECKED }],
   ["done, three files", { phase: "done", folder: "Videos", job: "x_1", files: [{ name: "a 11-08_1080p.mp4", bytes: 1 }, { name: "b 11-08_1080p.mp4", bytes: 2 }, { name: LONG, bytes: 3 }], note: "" }],
   ["failed, #231", { phase: "failed", stage: "job", code: "EXPORT_AUDIO_FAILED", reason: AUDIO_FAILED }],
+  ["failed, opened as administrator (MontClip#247)", { phase: "failed", stage: "job", code: "EXPORT_ELEVATED_CINDY", reason: "this program was started with \"Run as administrator\", and the browser an export needs exits at once that way" }],
   ["failed, generic", { phase: "failed", stage: "job", code: "EXPORT_FAILED", reason: "renderer crashed" }],
   ["copy failed", { phase: "copyFailed", code: "ENOSPC", reason: "no space left on device", job: "x_1", folder: "Videos" }],
   ["still", { phase: "still", job: "x_1", folder: "Videos" }],
