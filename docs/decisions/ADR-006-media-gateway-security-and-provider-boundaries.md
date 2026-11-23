@@ -121,11 +121,11 @@
 
 | 项目 | 值 / 规则 |
 |---|---|
-| **来源** | Dreamina 官方 Canvas CLI（`https://dreamina.capcut.com/tools/dreamina-cli`、`https://dreamina.capcut.com/ai-tool/install`） |
+| **来源** | Dreamina 官方 CLI（来源链接同 `three-provider-matrix.md`）：Agent CLI `https://dreamina.capcut.com/tools/dreamina-cli`；安装入口 `https://dreamina.capcut.com/ai-tool/install`；Canvas CLI 2_0_0_26 发行文档 `https://dreamina.capcut.com/canvas-cli/install/2_0_0_26/skill.tar.gz` |
 | **版本 / 构建** | `1.4.0`（commit `68e27033`） |
 | **固定路径** | `<USERPROFILE>\bin\dreamina-canvas.exe`（仅限 `win32` / `x64`，不从 `PATH` 查找） |
 | **代码钉死预期 SHA-256** | `1f764bc64fc7d43d451547b664cd0f6ebd4b1e74013a98fdee8a4acb0ba15876` |
-| **独立复算状态（如实标注）** | **待补独立复算**。本机当前已无 `dreamina-canvas.exe` 二进制（检出实测 `Test-Path "$env:USERPROFILE\bin\dreamina-canvas.exe" === False`），上述 1.4.0 SHA-256 系沿用原开发任务记录，尚未经第二方独立复算。在重新获取官方二进制并完成独立复算前，不放行实机运行。 |
+| **独立复算状态（如实标注）** | **本机没有找到原 CLI 二进制，哈希未复算。** 固定路径实测 `Test-Path "$env:USERPROFILE\bin\dreamina-canvas.exe" === False`；此前测试用的临时目录已不存在，目前没有任何可用的 1.4.0 原二进制副本可供复算（仅残留一个用于拒绝路径测试的 18 字节占位文件，不能用来复算 1.4.0）。上述 1.4.0 SHA-256 系沿用原开发任务记录，尚未经第二方独立复算。在从上列官方来源重新获取二进制并完成独立复算前，不放行实机运行。 |
 
 ### 3.2 执行前校验点与命令白名单
 
@@ -203,7 +203,7 @@
 以下项目**均未实测或处于阻塞状态**，在对应前置条件满足前不计入通过：
 
 1. **三家真实生成均为 0 次**：未连接任何账号，未发起任何真实生成，0 扣费；G1–G4 均未通过。
-2. **Dreamina CLI `1.4.0` 二进制哈希待第二方独立复算**：本机当前已无 `dreamina-canvas.exe`，`test-art-gateway.cjs` 的可选实机 CLI 分支（第 3 参数）未跑；Dreamina `submit` 与 `fetch` 尚未接线至账本；账号私测/订阅资格与按任务号现金账单（F2）未知。
+2. **Dreamina CLI `1.4.0` 二进制哈希待第二方独立复算**：本机没有找到原 CLI 二进制，哈希未复算（此前测试用的临时目录已不存在，仅残留 18 字节拒绝路径占位文件，不能用来复算），`test-art-gateway.cjs` 的可选实机 CLI 分支（第 3 参数）未跑；Dreamina `submit` 与 `fetch` 尚未接线至账本；账号私测/订阅资格与按任务号现金账单（F2）未知。
 3. **Google Flow 无官方第三方通路（FL0 阻塞）**：`gflow-cli` 未安装、未批准，FL1–FL6 均未跑。
 4. **CapCut 生成（CG）无官方第三方通路（CG0 阻塞）**：CG1–CG7 均未跑。
 5. **CapCut 草稿端到端实窗未验**：桌面版沙盒安装按主人 2026-11-22/23 口径搁置，桌面格式草稿未在任何 CapCut 客户端打开过；手机版 `20.1.0` 仅验证了相册导入合成视频并保存重开，**未验证**直接打开外部生成的草稿文件。
