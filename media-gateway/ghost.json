@@ -1,0 +1,447 @@
+{
+  "schemaVersion": 3,
+  "id": "art-media-gateway-dev",
+  "name": "Media Gateway (Art development copy)",
+  "description": "Art-compatible media tools plus Dreamina, Flow and CapCut entries with quotes, a job ledger and CapCut draft handoff.",
+  "whenToUse": "Check what Dreamina, Flow or CapCut can do from Cindy, quote and track a generation job by request id, or build an editable CapCut draft from local media.",
+  "version": "0.2.2",
+  "minCindyVersion": "0.1.143",
+  "settingsHtml": "settings.html",
+  "locales": {
+    "en": "locales/en.json",
+    "zh-CN": "locales/zh-CN.json",
+    "ja": "locales/ja.json",
+    "ko": "locales/ko.json"
+  },
+  "author": "Local development",
+  "icon": "assets/icon.png",
+  "entry": "main.js",
+  "cindy": {
+    "image": [
+      "generate",
+      "edit"
+    ],
+    "video": [
+      "generate",
+      "edit"
+    ]
+  },
+  "command": "art-media-gateway-dev",
+  "keywords": [
+    "画图",
+    "插画",
+    "配图",
+    "画一张",
+    "生成图片",
+    "p图",
+    "改图",
+    "视频"
+  ],
+  "tools": [
+    {
+      "name": "gen_image",
+      "description": "未配置模型时，先告知用户当前没有配置模型，并询问这次使用哪个，等待用户回答后再继续，不得自行选择。整理文生图需求并返回普通创作参数。本工具不生成媒体；调用后由当前 Agent 直接调用 Cindy Core media（完整工具名 mcp__cindy__media），不要查本地 API或另行选型。未点名模型时以 Art 设置页配置的 request.modelId/request.providerId 为准，即使订阅专属模型未出现在公共目录也不要改选；Core prepare 必须原样传为 model_id/provider_id。Core 返回的 cindy-media:// 或 xdt-*:// 受管地址可直接展示、复用或作为 attachments 交接；图片只展示一次。仅当用户询问本地路径时，调用 mcp__cindy__media 的 resolve_local_path；不要猜测路径或扫描磁盘。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "图片内容的文字描述(用户原话透传,不要扩写)"
+          },
+          "model": {
+            "type": "string",
+            "description": "可选。仅当用户在本次对话明确点名模型时传模型目录里的 id；否则不传，由 Art 使用插件设置页中为图片配置的模型。"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "description": "可选画幅，如 1:1、16:9、9:16、9:19.5。保留用户要求，由当前 Agent 按所选模型 Guide 转换；不要把横图或竖图强制改成 3:2 或 2:3。"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "description": "可选的质量意图。用户说草稿/快速出一版传 draft，明确要标准/普通质量传 standard，说要最好的/精修传 best；由当前 Agent 结合所选模型 Guide 映射成实际请求字段。"
+          },
+          "size": {
+            "type": "string",
+            "description": "可选像素尺寸，如 1760x3824，或 auto。保留用户期望的成品尺寸；生成前按 Guide 核对尺寸约束，必要时先生成合法尺寸再单独缩放成品，不要把成品尺寸直接当成模型一定支持的尺寸。"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "可选分辨率，如 1K、2K、4K、512。由当前 Agent 根据 Guide 映射，不能静默降到默认分辨率。"
+          },
+          "quality": {
+            "type": "string",
+            "description": "可选原生质量参数，如 high、xhigh、max、auto。用户明确指定时优先于 tier；按所选模型 Guide 校验，不能静默改为 medium。"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "edit_image",
+      "description": "未配置模型时，先告知用户当前没有配置模型，并询问这次使用哪个，等待用户回答后再继续，不得自行选择。整理改图需求并返回普通创作参数，最多 4 张参考图。本工具不生成媒体；调用后由当前 Agent 直接调用 Cindy Core media（完整工具名 mcp__cindy__media），不要查本地 API 或另行选型。未点名模型时以 Art 设置页配置的 request.modelId/request.providerId 为准，即使订阅专属模型未出现在公共目录也不要改选；Core prepare 必须原样传为 model_id/provider_id。已有的 cindy-media:// 地址填 images；用户随消息发来的图放 ghost_call 顶层 attachments，调用 Core 时使用对话中的原始媒体地址。Core 返回的 cindy-media:// 或 xdt-*:// 受管地址可直接展示、复用或作为 attachments 交接；图片只展示一次。仅当用户询问本地路径时，调用 mcp__cindy__media 的 resolve_local_path；不要猜测路径或扫描磁盘。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "怎么改(用户原话透传,不要扩写)"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 4,
+            "description": "可选：完整的 cindy-media://blobs/<指纹>.<后缀> 源图地址。只改用户发来的图时不填，把用户图放 ghost_call 顶层 attachments；调用 Core 时继续使用对话里的原始媒体地址(images 与 attachments 至少有一路)。"
+          },
+          "model": {
+            "type": "string",
+            "description": "可选。仅当用户在本次对话明确点名模型时传模型目录里的 id；否则不传，由 Art 使用插件设置页中为图片配置的模型。"
+          },
+          "aspectRatio": {
+            "type": "string",
+            "description": "可选画幅，如 1:1、16:9、9:16、9:19.5。保留用户要求，由当前 Agent 按所选模型 Guide 转换；不要把横图或竖图强制改成 3:2 或 2:3。"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "description": "可选的质量意图。用户说草稿/快速出一版传 draft，明确要标准/普通质量传 standard，说要最好的/精修传 best；由当前 Agent 结合所选模型 Guide 映射成实际请求字段。"
+          },
+          "size": {
+            "type": "string",
+            "description": "可选像素尺寸，如 1760x3824，或 auto。保留用户期望的成品尺寸；生成前按 Guide 核对尺寸约束，必要时先生成合法尺寸再单独缩放成品，不要把成品尺寸直接当成模型一定支持的尺寸。"
+          },
+          "resolution": {
+            "type": "string",
+            "description": "可选分辨率，如 1K、2K、4K、512。由当前 Agent 根据 Guide 映射，不能静默降到默认分辨率。"
+          },
+          "quality": {
+            "type": "string",
+            "description": "可选原生质量参数，如 high、xhigh、max、auto。用户明确指定时优先于 tier；按所选模型 Guide 校验，不能静默改为 medium。"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "gen_video",
+      "description": "未配置模型时，先告知用户当前没有配置模型，并询问这次使用哪个，等待用户回答后再继续，不得自行选择。整理文生视频需求并返回普通创作参数。本工具不生成媒体；调用后由当前 Agent 直接调用 Cindy Core media（完整工具名 mcp__cindy__media），不要查本地 API 或另行选型。未点名模型时以 Art 设置页配置的 request.modelId/request.providerId 为准，即使订阅专属模型未出现在公共目录也不要改选；Core prepare 必须原样传为 model_id/provider_id。视频生成可能需要轮询数分钟。Core 返回的 cindy-media:// 或 xdt-*:// 受管地址可直接展示、复用或作为 attachments 交接；图片只展示一次。仅当用户询问本地路径时，调用 mcp__cindy__media 的 resolve_local_path；不要猜测路径或扫描磁盘。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "视频内容的文字描述(用户原话透传,不要扩写)"
+          },
+          "model": {
+            "type": "string",
+            "description": "可选。仅当用户在本次对话明确点名模型时传模型目录里的 id；否则不传，由 Art 使用插件设置页中为视频配置的模型。"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "description": "可选的质量意图。用户要快传 draft，明确要标准/普通质量传 standard，要最高质量传 best；由当前 Agent 结合所选模型 Guide 映射成实际请求字段。"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "edit_video",
+      "description": "未配置模型时，先告知用户当前没有配置模型，并询问这次使用哪个，等待用户回答后再继续，不得自行选择。整理图生视频需求并返回普通创作参数：1 张参考图作为首帧，2 张参考图表示首尾帧。本工具不生成媒体；调用后由当前 Agent 直接调用 Cindy Core media（完整工具名 mcp__cindy__media），不要查本地 API 或另行选型。未点名模型时以 Art 设置页配置的 request.modelId/request.providerId 为准，即使订阅专属模型未出现在公共目录也不要改选；Core prepare 必须原样传为 model_id/provider_id。已有的 cindy-media:// 地址填 images；用户随消息发来的图放 ghost_call 顶层 attachments，调用 Core 时使用对话中的原始媒体地址。Core 返回的 cindy-media:// 或 xdt-*:// 受管地址可直接展示、复用或作为 attachments 交接；图片只展示一次。仅当用户询问本地路径时，调用 mcp__cindy__media 的 resolve_local_path；不要猜测路径或扫描磁盘。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "想让画面怎么动(用户原话透传,不要扩写)"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 2,
+            "description": "可选：完整的 cindy-media://blobs/<指纹>.<后缀> 参考图地址，1–2 张。只用用户发来的图时不填，走 attachments；调用 Core 时继续使用对话里的原始媒体地址(两路至少有一路)。"
+          },
+          "model": {
+            "type": "string",
+            "description": "可选。仅当用户在本次对话明确点名模型时传模型目录里的 id；否则不传，由 Art 使用插件设置页中为视频配置的模型。"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "standard",
+              "best"
+            ],
+            "description": "可选的质量意图。用户要快传 draft，明确要标准/普通质量传 standard，要最高质量传 best；由当前 Agent 结合所选模型 Guide 映射成实际请求字段。"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "dreamina_capabilities",
+      "description": "Read what this build can actually do for dreamina right now: installed route, connection, wired operations, billing limits and open gaps.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "dreamina_operation",
+      "description": "Dreamina through its official Canvas CLI. version/connection read the pinned CLI in an isolated profile. quote reads the credit ceiling of a saved node (projectId+nodeId) and, with requestId, records it in the ledger. submit needs the quoteId the owner confirmed and is disabled in this build (SPENDING_DISABLED). query/fetch/ledger work by requestId and never resubmit. Every unavailable step returns a stable code.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "version",
+              "connection",
+              "quote",
+              "submit",
+              "query",
+              "cancel",
+              "fetch",
+              "ledger",
+              "import"
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "submitId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "music",
+              "audio"
+            ]
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Gateway request id chosen once per shot (8-64 letters, digits, _ or -). Reuse it for quote, submit, query and fetch; reusing it never submits twice."
+          },
+          "quoteId": {
+            "type": "string",
+            "description": "The quoteId from the quote the owner confirmed. Required for submit."
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "flow_capabilities",
+      "description": "Read what this build can actually do for flow right now: installed route, connection, wired operations, billing limits and open gaps.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "flow_operation",
+      "description": "Google Flow. There is no verified official interface for other apps; the only known route drives the owner's signed-in browser through the third-party gflow CLI, which is not installed or approved here. capabilities/connection report that state; quote, submit and fetch return a stable code and never contact Google. ledger lists recorded requests.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "version",
+              "connection",
+              "quote",
+              "submit",
+              "query",
+              "cancel",
+              "fetch",
+              "ledger",
+              "import"
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "submitId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "music",
+              "audio"
+            ]
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Gateway request id chosen once per shot (8-64 letters, digits, _ or -). Reuse it for quote, submit, query and fetch; reusing it never submits twice."
+          },
+          "quoteId": {
+            "type": "string",
+            "description": "The quoteId from the quote the owner confirmed. Required for submit."
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capcut_capabilities",
+      "description": "Read what this build can actually do for capcut right now: installed route, connection, wired operations, billing limits and open gaps.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "capcut_operation",
+      "description": "CapCut. Generation has no verified official interface for other apps and returns a stable code. draft builds an editable CapCut desktop draft from local media files (name + clips) in the gateway staging folder without contacting CapCut or touching its project store. If the name is taken the draft is saved under a new name (name (2), ...) and the reply gives the actual name and folder; an existing draft is never replaced; it is an editing handoff, not generation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "version",
+              "connection",
+              "quote",
+              "submit",
+              "query",
+              "cancel",
+              "fetch",
+              "ledger",
+              "import",
+              "draft"
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "submitId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "mediaType": {
+            "type": "string",
+            "enum": [
+              "image",
+              "video",
+              "music",
+              "audio"
+            ]
+          },
+          "requestId": {
+            "type": "string",
+            "description": "Gateway request id chosen once per shot (8-64 letters, digits, _ or -). Reuse it for quote, submit, query and fetch; reusing it never submits twice."
+          },
+          "quoteId": {
+            "type": "string",
+            "description": "The quoteId from the quote the owner confirmed. Required for submit."
+          },
+          "name": {
+            "type": "string",
+            "description": "Draft name, up to 60 letters, digits, spaces, _ or -."
+          },
+          "clips": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "description": "Local media in timeline order.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "mediaType",
+                "durationMs"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Absolute local file path."
+                },
+                "mediaType": {
+                  "type": "string",
+                  "enum": [
+                    "video",
+                    "image",
+                    "audio",
+                    "music"
+                  ]
+                },
+                "durationMs": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "required": [
+          "operation"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "releaseNotes": "Development copy of Art 1.15.7. Adds a request ledger with quote-bound confirmation and duplicate-submit protection, per-provider capability reads and CapCut draft staging. Paid submission stays disabled.",
+  "node": {
+    "entry": "worker.cjs",
+    "protocol": "json-rpc-stdio",
+    "lifecycle": "on-demand"
+  }
+}
