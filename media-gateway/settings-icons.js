@@ -128,4 +128,175 @@ var artSettingsIcons = (function () {
       ["integrate.api.nvidia.com", "nvidia"],
       ["api.together.ai", "together"],
       ["api.mistral.ai", "mistral"],
-@@BB_SPLIT_B@@
+      ["amazonaws.com", "bedrock"],
+      ["openai.azure.com", "azure"],
+      ["aiplatform.googleapis.com", "google"],
+      ["cloudflare.com", "cloudflare"],
+      ["inference-api.nousresearch.com", "nousresearch"],
+      ["api.individual.githubcopilot.com", "githubcopilot"],
+      ['anthropic.com', 'anthropic'],
+      ['openai.com', 'openai'],
+      ['chatgpt.com', 'openai'],
+      ['x.ai', 'xai'],
+      ['openrouter.ai', 'openrouter'],
+      ['deepseek.com', 'deepseek'],
+      ['bigmodel.cn', 'zhipu'],
+      ['z.ai', 'zai'],
+      ['moonshot.cn', 'moonshot'],
+      ['moonshot.ai', 'moonshot'],
+      ['kimi.com', 'moonshot'],
+      ['minimaxi.com', 'minimax'],
+      ['minimax.io', 'minimax'],
+      ['dashscope.aliyuncs.com', 'alibaba'],
+      ['maas.aliyuncs.com', 'alibaba'],
+      ['generativelanguage.googleapis.com', 'google'],
+      ['longcat.chat', 'longcat'],
+      ['xiaomimimo.com', 'xiaomimimo'],
+      ['volces.com', 'volcengine'],
+      ['cloud.tencent.com', 'tencentcloud'],
+      ['opencode.ai', 'opencode'],
+      ['ai-gateway.vercel.sh', 'vercel'],
+      ['ollama.com', 'ollama'],
+      ['lmstudio.ai', 'lmstudio'],
+      ['vllm.ai', 'vllm'],
+  ];
+  function hostMatches(hostname, brandHost) {
+      if (brandHost === 'aiplatform.googleapis.com') {
+          return hostname === brandHost
+              || hostname.endsWith('-aiplatform.googleapis.com')
+              || /^aiplatform\.(us|eu)\.rep\.googleapis\.com$/.test(hostname);
+      }
+      if (brandHost === 'openai.azure.com') {
+          return hostname === brandHost
+              || hostname.endsWith('.openai.azure.com')
+              || hostname.endsWith('.cognitiveservices.azure.com');
+      }
+      if (brandHost === 'ai-gateway.vercel.sh')
+          return hostname === brandHost;
+      return hostname === brandHost || hostname.endsWith(`.${brandHost}`);
+  }
+  function resolveProviderLogoKind(providerId, routing) {
+      const byId = PROVIDER_LOGO_KIND_BY_ID[providerId];
+      if (byId)
+          return byId;
+      let routedKind = null;
+      for (const descriptor of Object.values(routing ?? {})) {
+          if (!descriptor)
+              continue;
+          try {
+              const hostname = new URL(descriptor.upstream.replace(/\{[A-Za-z][A-Za-z0-9_]*\}/g, 'account')).hostname.toLowerCase();
+              const match = PROVIDER_LOGO_KIND_BY_HOST.find(([host]) => hostMatches(hostname, host));
+              if (!match)
+                  continue;
+              if (routedKind && routedKind !== match[1])
+                  return null;
+              routedKind = match[1];
+          }
+          catch {
+          }
+      }
+      return routedKind;
+  }
+  function hasProviderLogo(providerId, routing) {
+      return resolveProviderLogoKind(providerId, routing) !== null;
+  }
+
+  var XD_SYMBOL_PATHS = [
+  "M397.1,150.3c-7.1-5.5-15.4-9.2-24.3-10.8c-28.2-5.2-45.3,2.2-59.5,10.8c-12.8,7.8-21,18.9-25.7,27.2v0.1c-1,1.9-0.3,4.2,1.5,5.2c0.6,0.3,1.3,0.5,1.9,0.5h0.2c26.5-3,53.1,4.7,73.9,21.4c0.6,0.5,1.2,1,1.8,1.4l1,0.8c10,8,20.2,10.6,28.6,7.6c8-2.9,13.9-10.8,16-21.6C415.9,176.3,410.3,160.7,397.1,150.3z",
+  "M302.9,197.1c-26.5,0.6-55.1-9-76.6-34.6c-1.9-2.2-3.5-4.3-4.9-6.3c-2.6-3-7.1-3.3-10.1-0.7c-0.8,0.7-1.5,1.6-1.9,2.7l0,0c-0.8,2.3-1.7,4.8-2.7,7.7c-4.4,14.6-7.1,37.6,1.2,60s20.9,41.1,49.4,56.2c31.1,16.5,69.7,10.2,87.3-24.2C359.9,228,344.2,196.1,302.9,197.1z",
+  "M196.6,237.2c-0.3-0.7-0.6-1.6-0.9-2.4c-9.4-24.4-10.1-51.3-2-76.2c0.1-0.5,0.2-1,0.2-1.5c-0.1-2.3-2.1-4-4.4-3.9c0,0,0,0,0,0c-0.4,0-0.8,0.1-1.2,0.3c-7.7,2.8-14.9,7-21.1,12.3c-9.1,7.9-18.3,17.4-24.1,33.6c-2.3,6.6-3.9,13.3-4.7,20.2c-1.2,8.6-0.3,17.4,2.7,25.5c5.5,14.7,17.7,24.1,33.6,25.9c9.6,1.1,17.5-1.4,21.8-6.9c1-1.3,1.9-2.9,2.4-4.5l0,0c2-5.6,1.4-13-1.7-21.3C196.9,238,196.8,237.6,196.6,237.2z"
+];
+  var OPENAI_MARK_PATH = "M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.142-.08 4.778-2.758a.795.795 0 0 0 .393-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.495 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.787a4.49 4.49 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.674zm2.01-3.026l-.142-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.607 1.5-2.602-1.5z";
+  var ANTHROPIC_MARK_PATH = "M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.461H0L6.57 3.52zm4.132 9.876L8.453 7.247 6.205 13.396z";
+  var LINE_ICONS = {
+  "sparkles": [
+    [
+      "path",
+      {
+        "d": "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z",
+        "key": "4pj2yx"
+      }
+    ],
+    [
+      "path",
+      {
+        "d": "M20 3v4",
+        "key": "1olli1"
+      }
+    ],
+    [
+      "path",
+      {
+        "d": "M22 5h-4",
+        "key": "1gvqau"
+      }
+    ],
+    [
+      "path",
+      {
+        "d": "M4 17v2",
+        "key": "vumght"
+      }
+    ],
+    [
+      "path",
+      {
+        "d": "M5 18H3",
+        "key": "zchphs"
+      }
+    ]
+  ],
+  "chevron-down": [
+    [
+      "path",
+      {
+        "d": "m6 9 6 6 6-6",
+        "key": "qrunsl"
+      }
+    ]
+  ],
+  "check": [
+    [
+      "path",
+      {
+        "d": "M20 6 9 17l-5-5",
+        "key": "1gmf2c"
+      }
+    ]
+  ]
+};
+
+  function escapeText(value) {
+    return String(value).replace(/[&<>"']/g, function (character) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character];
+    });
+  }
+
+  function providerMark(model) {
+    var kind = isProviderLogoKind(model.logoKind)
+      ? model.logoKind
+      : resolveProviderLogoKind(model.providerId, model.routing);
+    if (!isProviderLogoKind(kind)) {
+      if (!model.providerName) return '';
+      var initial = (Array.from(model.providerName.trim())[0] || '?').toUpperCase();
+      return '<span class="provider-mark provider-monogram" aria-hidden="true">' + escapeText(initial) + '</span>';
+    }
+    var isXd = model.providerId === 'xd';
+    var paths = kind === 'xd'
+      ? XD_SYMBOL_PATHS
+      : [kind === 'openai' ? OPENAI_MARK_PATH : kind === 'anthropic' ? ANTHROPIC_MARK_PATH : PROVIDER_LOGO_PATHS[kind]];
+    return '<svg class="provider-mark" width="' + (isXd ? 14.2 : 12.3) + '" height="' + (isXd ? 8.4 : 12.3) +
+      '" viewBox="' + (kind === 'xd' ? '136 137 282 158' : '0 0 24 24') +
+      '" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+      paths.map(function (path) { return '<path d="' + path + '" fill="currentColor"/>'; }).join('') + '</svg>';
+  }
+
+  function icon(name, className) {
+    var size = name === 'sparkles' ? 14 : name === 'check' ? 15 : 13;
+    return '<svg class="' + escapeText(className || '') + '" width="' + size + '" height="' + size +
+      '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      LINE_ICONS[name].map(function (node) { return '<path d="' + node[1].d + '"/>'; }).join('') + '</svg>';
+  }
+
+  return { providerMark: providerMark, icon: icon };
+})();
